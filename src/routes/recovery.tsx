@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -461,7 +462,7 @@ function BulkReminderDialog({ rows }: { rows: Row[] }) {
 
   // sync selection when audience changes
   const allIds = audienceRows.map((r) => r.id).join(",");
-  useMemo(() => { setSelected(new Set(audienceRows.map((r) => r.id))); /* eslint-disable-next-line */ }, [allIds]);
+  useEffect(() => { setSelected(new Set(audienceRows.map((r) => r.id))); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [allIds]);
 
   const tpl = templates.find((t) => t.id === tplId);
   const totalPending = audienceRows
