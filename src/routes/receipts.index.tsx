@@ -20,7 +20,7 @@ const q = {
   }),
 };
 
-export const Route = createFileRoute("/receipts")({
+export const Route = createFileRoute("/receipts/")({
   head: () => ({
     meta: [
       { title: "Receipts — Vidyafee" },

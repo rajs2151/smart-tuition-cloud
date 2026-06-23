@@ -9,20 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as StudentsRouteImport } from './routes/students'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as ReceiptsRouteImport } from './routes/receipts'
 import { Route as FeesRouteImport } from './routes/fees'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as StudentsIndexRouteImport } from './routes/students.index'
+import { Route as ReceiptsIndexRouteImport } from './routes/receipts.index'
 import { Route as StudentsIdRouteImport } from './routes/students.$id'
 import { Route as ReceiptsIdRouteImport } from './routes/receipts.$id'
 
-const StudentsRoute = StudentsRouteImport.update({
-  id: '/students',
-  path: '/students',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
@@ -31,11 +26,6 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReceiptsRoute = ReceiptsRouteImport.update({
-  id: '/receipts',
-  path: '/receipts',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeesRoute = FeesRouteImport.update({
@@ -48,99 +38,104 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StudentsIndexRoute = StudentsIndexRouteImport.update({
+  id: '/students/',
+  path: '/students/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReceiptsIndexRoute = ReceiptsIndexRouteImport.update({
+  id: '/receipts/',
+  path: '/receipts/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StudentsIdRoute = StudentsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => StudentsRoute,
+  id: '/students/$id',
+  path: '/students/$id',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const ReceiptsIdRoute = ReceiptsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => ReceiptsRoute,
+  id: '/receipts/$id',
+  path: '/receipts/$id',
+  getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/fees': typeof FeesRoute
-  '/receipts': typeof ReceiptsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/students': typeof StudentsRouteWithChildren
   '/receipts/$id': typeof ReceiptsIdRoute
   '/students/$id': typeof StudentsIdRoute
+  '/receipts/': typeof ReceiptsIndexRoute
+  '/students/': typeof StudentsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/fees': typeof FeesRoute
-  '/receipts': typeof ReceiptsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/students': typeof StudentsRouteWithChildren
   '/receipts/$id': typeof ReceiptsIdRoute
   '/students/$id': typeof StudentsIdRoute
+  '/receipts': typeof ReceiptsIndexRoute
+  '/students': typeof StudentsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/fees': typeof FeesRoute
-  '/receipts': typeof ReceiptsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
-  '/students': typeof StudentsRouteWithChildren
   '/receipts/$id': typeof ReceiptsIdRoute
   '/students/$id': typeof StudentsIdRoute
+  '/receipts/': typeof ReceiptsIndexRoute
+  '/students/': typeof StudentsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/fees'
-    | '/receipts'
     | '/settings'
     | '/sitemap.xml'
-    | '/students'
     | '/receipts/$id'
     | '/students/$id'
+    | '/receipts/'
+    | '/students/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/fees'
-    | '/receipts'
     | '/settings'
     | '/sitemap.xml'
-    | '/students'
     | '/receipts/$id'
     | '/students/$id'
+    | '/receipts'
+    | '/students'
   id:
     | '__root__'
     | '/'
     | '/fees'
-    | '/receipts'
     | '/settings'
     | '/sitemap.xml'
-    | '/students'
     | '/receipts/$id'
     | '/students/$id'
+    | '/receipts/'
+    | '/students/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   FeesRoute: typeof FeesRoute
-  ReceiptsRoute: typeof ReceiptsRouteWithChildren
   SettingsRoute: typeof SettingsRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
-  StudentsRoute: typeof StudentsRouteWithChildren
+  ReceiptsIdRoute: typeof ReceiptsIdRoute
+  StudentsIdRoute: typeof StudentsIdRoute
+  ReceiptsIndexRoute: typeof ReceiptsIndexRoute
+  StudentsIndexRoute: typeof StudentsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/students': {
-      id: '/students'
-      path: '/students'
-      fullPath: '/students'
-      preLoaderRoute: typeof StudentsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/sitemap.xml': {
       id: '/sitemap.xml'
       path: '/sitemap.xml'
@@ -153,13 +148,6 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/receipts': {
-      id: '/receipts'
-      path: '/receipts'
-      fullPath: '/receipts'
-      preLoaderRoute: typeof ReceiptsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/fees': {
@@ -176,54 +164,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/students/': {
+      id: '/students/'
+      path: '/students'
+      fullPath: '/students/'
+      preLoaderRoute: typeof StudentsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/receipts/': {
+      id: '/receipts/'
+      path: '/receipts'
+      fullPath: '/receipts/'
+      preLoaderRoute: typeof ReceiptsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/students/$id': {
       id: '/students/$id'
-      path: '/$id'
+      path: '/students/$id'
       fullPath: '/students/$id'
       preLoaderRoute: typeof StudentsIdRouteImport
-      parentRoute: typeof StudentsRoute
+      parentRoute: typeof rootRouteImport
     }
     '/receipts/$id': {
       id: '/receipts/$id'
-      path: '/$id'
+      path: '/receipts/$id'
       fullPath: '/receipts/$id'
       preLoaderRoute: typeof ReceiptsIdRouteImport
-      parentRoute: typeof ReceiptsRoute
+      parentRoute: typeof rootRouteImport
     }
   }
 }
 
-interface ReceiptsRouteChildren {
-  ReceiptsIdRoute: typeof ReceiptsIdRoute
-}
-
-const ReceiptsRouteChildren: ReceiptsRouteChildren = {
-  ReceiptsIdRoute: ReceiptsIdRoute,
-}
-
-const ReceiptsRouteWithChildren = ReceiptsRoute._addFileChildren(
-  ReceiptsRouteChildren,
-)
-
-interface StudentsRouteChildren {
-  StudentsIdRoute: typeof StudentsIdRoute
-}
-
-const StudentsRouteChildren: StudentsRouteChildren = {
-  StudentsIdRoute: StudentsIdRoute,
-}
-
-const StudentsRouteWithChildren = StudentsRoute._addFileChildren(
-  StudentsRouteChildren,
-)
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FeesRoute: FeesRoute,
-  ReceiptsRoute: ReceiptsRouteWithChildren,
   SettingsRoute: SettingsRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
-  StudentsRoute: StudentsRouteWithChildren,
+  ReceiptsIdRoute: ReceiptsIdRoute,
+  StudentsIdRoute: StudentsIdRoute,
+  ReceiptsIndexRoute: ReceiptsIndexRoute,
+  StudentsIndexRoute: StudentsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

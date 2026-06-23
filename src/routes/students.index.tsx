@@ -23,7 +23,7 @@ const q = {
   }),
 };
 
-export const Route = createFileRoute("/students")({
+export const Route = createFileRoute("/students/")({
   head: () => ({
     meta: [
       { title: "Students — Vidyafee" },
