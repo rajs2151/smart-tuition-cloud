@@ -7,8 +7,9 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
-import { getStudent, listPayments } from "@/lib/data/adapter";
+import { getStudent, listBatches, listPayments } from "@/lib/data/adapter";
 import { fmtDate, inr } from "@/lib/format";
+import { useSettings } from "@/lib/settings/store";
 
 export const Route = createFileRoute("/receipts/$id")({
   loader: async ({ params, context }) => {
@@ -19,7 +20,8 @@ export const Route = createFileRoute("/receipts/$id")({
         const payment = all.find((p) => p.id === params.id);
         if (!payment) throw notFound();
         const student = await getStudent(payment.studentId);
-        return { payment, student };
+        const batches = await listBatches();
+        return { payment, student, batch: batches.find((b) => b.id === student?.batchId) };
       },
     });
   },
@@ -37,10 +39,12 @@ function ReceiptDetail() {
       const all = await listPayments();
       const payment = all.find((p) => p.id === params.id)!;
       const student = await getStudent(payment.studentId);
-      return { payment, student };
+      const batches = await listBatches();
+      return { payment, student, batch: batches.find((b) => b.id === student?.batchId) };
     },
   });
-  const { payment, student } = data;
+  const { institute, receipt: cfg } = useSettings();
+  const { payment, student, batch } = data;
   if (!student) return null;
 
   const billed = student.totalFee - student.discount;
@@ -56,7 +60,7 @@ function ReceiptDetail() {
             <Button variant="outline" size="sm" asChild>
               <Link to="/receipts"><ArrowLeft className="h-4 w-4" /> Back</Link>
             </Button>
-            <Button size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print</Button>
+            <Button size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print A4</Button>
             <Button variant="outline" size="sm"><Download className="h-4 w-4" /> Download PDF</Button>
             <Button variant="outline" size="sm"><MessageCircle className="h-4 w-4" /> Send WhatsApp</Button>
           </>
@@ -64,17 +68,29 @@ function ReceiptDetail() {
       />
 
       <main className="flex-1 p-4 md:p-6">
-        <Card className="mx-auto max-w-2xl p-8 print:border-0 print:shadow-none">
+        <Card className="mx-auto max-w-2xl p-8 print:max-w-none print:border-0 print:shadow-none">
           {/* Header */}
           <div className="flex items-start justify-between border-b pb-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-xl gradient-brand text-white font-display text-xl font-bold">
-                DC
-              </div>
+              {cfg.showLogo && (
+                institute.logoUrl ? (
+                  <img src={institute.logoUrl} alt="" className="h-14 w-14 rounded-xl object-cover" />
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-xl gradient-brand text-white font-display text-xl font-bold">
+                    {institute.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )
+              )}
               <div>
-                <h2 className="font-display text-2xl font-bold">Dnyanpeeth Classes</h2>
-                <p className="text-xs text-muted-foreground">FC Road, Pune · GST: 27ABCDE1234F1Z5</p>
-                <p className="text-xs text-muted-foreground">+91 98765 43210 · hello@dnyanpeeth.in</p>
+                <h2 className="font-display text-2xl font-bold">{institute.name}</h2>
+                <p className="text-xs text-muted-foreground">
+                  {institute.address}
+                  {cfg.showGst && institute.gstNumber ? ` · GST: ${institute.gstNumber}` : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {institute.phone} · {institute.email}
+                  {institute.website ? ` · ${institute.website}` : ""}
+                </p>
               </div>
             </div>
             <div className="text-right">
@@ -91,11 +107,21 @@ function ReceiptDetail() {
               <p className="mt-1 font-display text-base font-bold">{student.name}</p>
               <p className="text-muted-foreground">Roll No: {student.rollNo}</p>
               <p className="text-muted-foreground">{student.phone}</p>
+              {student.parentName && <p className="text-muted-foreground">Parent: {student.parentName}</p>}
             </div>
             <div className="text-right">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Course</p>
-              <p className="mt-1 font-medium">{student.course}</p>
-              <p className="text-muted-foreground">Admission: {fmtDate(student.admissionDate)}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Academic</p>
+              <p className="mt-1 font-medium">{batch?.name ?? student.course}</p>
+              {student.standard && (
+                <p className="text-xs text-muted-foreground">
+                  {student.standard} · {student.board} · {student.medium}
+                </p>
+              )}
+              {student.examCategory && (
+                <p className="text-xs text-muted-foreground">
+                  {student.examCategory} {batch?.examYear ?? ""}
+                </p>
+              )}
             </div>
           </div>
 
@@ -113,7 +139,7 @@ function ReceiptDetail() {
               <tbody className="border-t">
                 <tr>
                   <td className="py-3">
-                    Fee payment — {student.course}
+                    Fee payment — {batch?.name ?? student.course}
                     {payment.note && <p className="text-xs text-muted-foreground">{payment.note}</p>}
                   </td>
                   <td className="py-3 text-right font-medium">{inr(payment.amount)}</td>
@@ -127,22 +153,30 @@ function ReceiptDetail() {
             <Row label="Amount received" value={inr(payment.amount)} bold />
             <Row label="Payment mode" value={payment.mode} />
             <Separator className="my-2" />
-            <Row label="Total course fee" value={inr(student.totalFee)} />
-            <Row label="Discount" value={`- ${inr(student.discount)}`} />
+            <Row label="Course fee" value={inr(student.courseFee || student.totalFee)} />
+            {student.admissionFee > 0 && <Row label="Admission fee" value={inr(student.admissionFee)} />}
+            {student.discount > 0 && <Row label="Discount" value={`- ${inr(student.discount)}`} />}
             <Row label="Total paid" value={inr(student.paidFee)} />
-            <Row label="Balance due" value={inr(balance)} bold tone={balance > 0 ? "danger" : "success"} />
+            <Row label="Pending balance" value={inr(balance)} bold tone={balance > 0 ? "danger" : "success"} />
           </div>
 
-          <div className="mt-10 flex items-end justify-between border-t pt-6 text-xs text-muted-foreground">
-            <div>
-              <p>Thank you for your payment.</p>
-              <p>This is a computer-generated receipt.</p>
+          {cfg.showFooter && (
+            <div className="mt-10 space-y-4 border-t pt-6 text-xs text-muted-foreground">
+              {cfg.termsAndConditions && (
+                <div>
+                  <p className="font-semibold text-foreground">Terms &amp; Conditions</p>
+                  <p className="mt-1 whitespace-pre-line">{cfg.termsAndConditions}</p>
+                </div>
+              )}
+              <div className="flex items-end justify-between">
+                <p className="max-w-xs">{cfg.footerText}</p>
+                <div className="text-right">
+                  <div className="h-10 w-32 border-b border-dashed" />
+                  <p className="mt-1">{cfg.authorizedSignatory}</p>
+                </div>
+              </div>
             </div>
-            <div className="text-right">
-              <div className="h-10 w-32 border-b border-dashed" />
-              <p className="mt-1">Authorised signatory</p>
-            </div>
-          </div>
+          )}
         </Card>
       </main>
     </>

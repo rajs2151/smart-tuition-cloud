@@ -111,12 +111,22 @@ function StudentDetail() {
                 </div>
               </div>
               <Separator />
+              {(s.standard || s.examCategory) && (
+                <div className="rounded-lg border bg-muted/40 p-3 text-xs">
+                  <p className="font-semibold text-foreground">Academic</p>
+                  <p className="text-muted-foreground">
+                    {s.examCategory
+                      ? `${s.examCategory} ${batch?.examYear ?? ""}`
+                      : `${s.standard} · ${s.board} · ${s.medium}`}
+                  </p>
+                </div>
+              )}
               <Row icon={<Phone className="h-4 w-4" />} label="Phone" value={s.phone} />
-              <Row icon={<Phone className="h-4 w-4" />} label="Parent" value={s.parentPhone || "—"} />
+              <Row icon={<Phone className="h-4 w-4" />} label="Parent" value={`${s.parentName ?? "—"}${s.parentPhone ? " · " + s.parentPhone : ""}`} />
               <Row icon={<Mail className="h-4 w-4" />} label="Email" value={s.email || "—"} />
               <Row icon={<MapPin className="h-4 w-4" />} label="Address" value={s.address || "—"} />
               <Row icon={<Calendar className="h-4 w-4" />} label="Admission" value={fmtDate(s.admissionDate)} />
-              <Row icon={<IndianRupee className="h-4 w-4" />} label="Course fee" value={inr(s.totalFee)} />
+              <Row icon={<IndianRupee className="h-4 w-4" />} label="Course fee" value={inr(s.courseFee || s.totalFee)} />
             </CardContent>
           </Card>
 

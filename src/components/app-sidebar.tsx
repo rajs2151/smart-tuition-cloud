@@ -28,13 +28,13 @@ import {
 const main = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Students", url: "/students", icon: Users },
+  { title: "Batches", url: "/batches", icon: BookOpen },
   { title: "Fees", url: "/fees", icon: IndianRupee },
   { title: "Receipts", url: "/receipts", icon: Receipt },
 ];
 
 const upcoming = [
   { title: "Attendance", url: "/attendance", icon: CalendarCheck },
-  { title: "Batches", url: "/batches", icon: BookOpen },
   { title: "Messaging", url: "/messaging", icon: MessageSquare },
   { title: "Reports", url: "/reports", icon: BarChart3 },
 ];
