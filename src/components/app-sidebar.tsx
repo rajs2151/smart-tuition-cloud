@@ -6,7 +6,7 @@ import {
   Receipt,
   CalendarCheck,
   BookOpen,
-  MessageSquare,
+  MessageCircle,
   BarChart3,
   Settings,
   GraduationCap,
@@ -30,12 +30,12 @@ const main = [
   { title: "Students", url: "/students", icon: Users },
   { title: "Batches", url: "/batches", icon: BookOpen },
   { title: "Fees", url: "/fees", icon: IndianRupee },
+  { title: "Recovery & WhatsApp", url: "/recovery", icon: MessageCircle },
   { title: "Receipts", url: "/receipts", icon: Receipt },
 ];
 
 const upcoming = [
   { title: "Attendance", url: "/attendance", icon: CalendarCheck },
-  { title: "Messaging", url: "/messaging", icon: MessageSquare },
   { title: "Reports", url: "/reports", icon: BarChart3 },
 ];
 
