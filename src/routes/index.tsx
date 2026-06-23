@@ -20,8 +20,11 @@ import {
   TrendingUp,
   Users,
   AlertCircle,
-  Plus,
+  BookOpen,
+  Receipt as ReceiptIcon,
+  UserPlus,
   Sparkles,
+  FileBarChart,
 } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
@@ -30,8 +33,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
+import { AddStudentDialog } from "@/components/add-student-dialog";
 
 import { listBatches, listPayments, listStudents } from "@/lib/data/adapter";
+import { useSettings } from "@/lib/settings/store";
 import { fmtDate, initials, inr, inrShort } from "@/lib/format";
 
 const dashboardQuery = {
@@ -59,12 +64,21 @@ export const Route = createFileRoute("/")({
 
 function Dashboard() {
   const { data } = useSuspenseQuery(dashboardQuery);
+  const { institute } = useSettings();
   const { students, payments, batches } = data;
 
   const totalBilled = students.reduce((a, s) => a + (s.totalFee - s.discount), 0);
   const totalCollected = students.reduce((a, s) => a + s.paidFee, 0);
   const pending = Math.max(0, totalBilled - totalCollected);
   const collectionRate = totalBilled ? Math.round((totalCollected / totalBilled) * 100) : 0;
+  const activeStudents = students.filter((s) => s.status === "active").length;
+  const activeBatches = batches.filter((b) => b.active !== false).length;
+
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const monthlyRevenue = payments
+    .filter((p) => p.date.startsWith(thisMonth))
+    .reduce((a, p) => a + p.amount, 0);
+  const newAdmissions = students.filter((s) => s.admissionDate.startsWith(thisMonth)).length;
 
   // monthly trend (last 8 months)
   const months: { m: string; collected: number; due: number }[] = [];
@@ -102,40 +116,66 @@ function Dashboard() {
   const batchRevenue = batches.map((b) => {
     const sIds = students.filter((s) => s.batchId === b.id);
     const collected = sIds.reduce((a, s) => a + s.paidFee, 0);
-    return { name: b.name.split("—")[0].trim(), value: collected };
+    return { name: b.name.split("—")[0].trim().slice(0, 18), value: collected };
   });
 
   return (
     <>
       <AppHeader
-        title="Welcome back, Dnyanpeeth"
+        title={`Welcome back, ${institute.name}`}
         subtitle={typeof window === "undefined" ? "Today's overview" : new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
         actions={
-          <>
-            <Button asChild>
-              <Link to="/fees">
-                <Plus className="h-4 w-4" /> Record payment
-              </Link>
-            </Button>
-            <Button variant="outline" asChild>
-              <Link to="/students">
-                <Users className="h-4 w-4" /> Add student
-              </Link>
-            </Button>
-            <Badge variant="secondary" className="ml-auto gap-1.5">
-              <Sparkles className="h-3 w-3" /> Trial · 14 days left
-            </Badge>
-          </>
+          <Badge variant="secondary" className="ml-auto gap-1.5">
+            <Sparkles className="h-3 w-3" /> Trial · 14 days left
+          </Badge>
         }
       />
 
       <main className="flex-1 space-y-6 p-4 md:p-6">
+        {/* Quick actions */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <AddStudentDialog
+            trigger={
+              <button className="group flex items-center gap-3 rounded-xl border bg-card p-4 text-left transition hover:border-primary hover:shadow-md">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><UserPlus className="h-5 w-5" /></span>
+                <span>
+                  <p className="font-display font-bold">Add Student</p>
+                  <p className="text-xs text-muted-foreground">New admission</p>
+                </span>
+              </button>
+            }
+          />
+          <Link to="/fees" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success"><IndianRupee className="h-5 w-5" /></span>
+            <span>
+              <p className="font-display font-bold">Collect Fee</p>
+              <p className="text-xs text-muted-foreground">Record payment</p>
+            </span>
+          </Link>
+          <Link to="/receipts" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info"><ReceiptIcon className="h-5 w-5" /></span>
+            <span>
+              <p className="font-display font-bold">Receipts</p>
+              <p className="text-xs text-muted-foreground">Print &amp; share</p>
+            </span>
+          </Link>
+          <Link to="/batches" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15 text-warning-foreground"><FileBarChart className="h-5 w-5" /></span>
+            <span>
+              <p className="font-display font-bold">Batches</p>
+              <p className="text-xs text-muted-foreground">Manage batches</p>
+            </span>
+          </Link>
+        </div>
+
         {/* KPIs */}
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Kpi label="Collected this year" value={inr(totalCollected)} delta="+12.4%" tone="success" icon={<IndianRupee className="h-4 w-4" />} />
-          <Kpi label="Pending dues" value={inr(pending)} delta={`${defaulters.length} students`} tone="warning" icon={<AlertCircle className="h-4 w-4" />} />
-          <Kpi label="Active students" value={students.filter((s) => s.status === "active").length.toString()} delta="+6 this month" tone="info" icon={<Users className="h-4 w-4" />} />
-          <Kpi label="Collection rate" value={`${collectionRate}%`} delta="of billed amount" tone="primary" icon={<TrendingUp className="h-4 w-4" />} />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Kpi label="Total students" value={students.length.toString()} delta={`${activeStudents} active`} tone="info" icon={<Users className="h-4 w-4" />} />
+          <Kpi label="New admissions (this month)" value={newAdmissions.toString()} delta="+ this month" tone="primary" icon={<UserPlus className="h-4 w-4" />} />
+          <Kpi label="Active batches" value={activeBatches.toString()} delta={`${batches.length} total`} tone="warning" icon={<BookOpen className="h-4 w-4" />} />
+          <Kpi label="Total collection" value={inr(totalCollected)} delta={`${collectionRate}% of billed`} tone="success" icon={<IndianRupee className="h-4 w-4" />} />
+          <Kpi label="Pending fees" value={inr(pending)} delta={`${defaulters.length} students`} tone="warning" icon={<AlertCircle className="h-4 w-4" />} />
+          <Kpi label="Monthly revenue" value={inr(monthlyRevenue)} delta="current month" tone="primary" icon={<TrendingUp className="h-4 w-4" />} />
         </div>
 
         <div className="grid gap-6 xl:grid-cols-3">
