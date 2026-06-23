@@ -141,7 +141,23 @@ function FeesPage() {
                 </div>
                 <div className="flex gap-2">
                   {s.due > 0 && (
-                    <Button variant="outline" size="sm" title="Send WhatsApp reminder">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title="Send WhatsApp reminder"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        const { templates, defaults } = getMessaging();
+                        const tpl = templates.find((t) => t.id === defaults.reminder) ?? templates.find((t) => t.category === "reminder");
+                        const mobile = pickMobile(s);
+                        if (!mobile) return toast.error("No mobile on file");
+                        if (!tpl) return toast.error("Configure a reminder template in Settings");
+                        const msg = renderMessage(tpl, buildContext({ student: s, pending: s.due }));
+                        openWhatsApp(mobile, msg);
+                        logComm({ studentId: s.id, studentName: s.name, mobile, templateId: tpl.id, templateName: tpl.name, category: "reminder", message: msg, sentBy: "owner" });
+                        toast.success("WhatsApp reminder opened");
+                      }}
+                    >
                       <MessageCircle className="h-4 w-4" />
                     </Button>
                   )}
@@ -161,23 +177,46 @@ function FeesPage() {
           <CardContent className="space-y-1">
             {data.payments.slice(0, 8).map((p) => {
               const st = data.students.find((s) => s.id === p.studentId);
+              const sendAck = (e: React.MouseEvent) => {
+                e.preventDefault();
+                if (!st) return;
+                const { templates, defaults } = getMessaging();
+                const billed = st.totalFee - st.discount;
+                const pending = Math.max(0, billed - st.paidFee);
+                const subType = pending === 0 ? "full" : p.type === "admission" ? "admission" : "partial";
+                const tpl =
+                  templates.find((t) => t.id === defaults.acknowledgement) ??
+                  templates.find((t) => t.category === "acknowledgement" && t.subType === subType) ??
+                  templates.find((t) => t.category === "acknowledgement");
+                const mobile = pickMobile(st);
+                if (!mobile) return toast.error("No mobile on file");
+                if (!tpl) return toast.error("Configure an acknowledgement template in Settings");
+                const msg = renderMessage(tpl, buildContext({ student: st, payment: p, pending }));
+                openWhatsApp(mobile, msg);
+                logComm({ studentId: st.id, studentName: st.name, mobile, templateId: tpl.id, templateName: tpl.name, category: "acknowledgement", message: msg, sentBy: "owner" });
+                markLogPaid(st.id);
+                toast.success("Acknowledgement opened");
+              };
               return (
-                <Link
+                <div
                   key={p.id}
-                  to="/receipts/$id"
-                  params={{ id: p.id }}
                   className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-accent/50"
                 >
-                  <div>
+                  <Link to="/receipts/$id" params={{ id: p.id }} className="flex-1">
                     <p className="text-sm font-medium">{st?.name}</p>
                     <p className="text-xs text-muted-foreground">{p.receiptNo} · {fmtDate(p.date)}</p>
-                  </div>
+                  </Link>
                   <div className="flex items-center gap-3">
                     <Badge variant="secondary">{p.mode}</Badge>
                     <span className="font-display font-bold text-success">+{inr(p.amount)}</span>
-                    <ReceiptIcon className="h-4 w-4 text-muted-foreground" />
+                    <Button size="sm" variant="outline" onClick={sendAck} className="h-7 gap-1 px-2 text-xs" title="WhatsApp acknowledgement">
+                      <MessageCircle className="h-3.5 w-3.5" /> Ack
+                    </Button>
+                    <Link to="/receipts/$id" params={{ id: p.id }}>
+                      <ReceiptIcon className="h-4 w-4 text-muted-foreground" />
+                    </Link>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </CardContent>
