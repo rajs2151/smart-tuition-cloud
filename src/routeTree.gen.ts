@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RecoveryRouteImport } from './routes/recovery'
 import { Route as FeesRouteImport } from './routes/fees'
 import { Route as BatchesRouteImport } from './routes/batches'
 import { Route as IndexRouteImport } from './routes/index'
@@ -27,6 +28,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecoveryRoute = RecoveryRouteImport.update({
+  id: '/recovery',
+  path: '/recovery',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeesRoute = FeesRouteImport.update({
@@ -69,6 +75,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/batches': typeof BatchesRoute
   '/fees': typeof FeesRoute
+  '/recovery': typeof RecoveryRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -80,6 +87,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/batches': typeof BatchesRoute
   '/fees': typeof FeesRoute
+  '/recovery': typeof RecoveryRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -92,6 +100,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/batches': typeof BatchesRoute
   '/fees': typeof FeesRoute
+  '/recovery': typeof RecoveryRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -105,6 +114,7 @@ export interface FileRouteTypes {
     | '/'
     | '/batches'
     | '/fees'
+    | '/recovery'
     | '/settings'
     | '/sitemap.xml'
     | '/receipts/$id'
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/'
     | '/batches'
     | '/fees'
+    | '/recovery'
     | '/settings'
     | '/sitemap.xml'
     | '/receipts/$id'
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/'
     | '/batches'
     | '/fees'
+    | '/recovery'
     | '/settings'
     | '/sitemap.xml'
     | '/receipts/$id'
@@ -139,6 +151,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BatchesRoute: typeof BatchesRoute
   FeesRoute: typeof FeesRoute
+  RecoveryRoute: typeof RecoveryRoute
   SettingsRoute: typeof SettingsRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
@@ -161,6 +174,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recovery': {
+      id: '/recovery'
+      path: '/recovery'
+      fullPath: '/recovery'
+      preLoaderRoute: typeof RecoveryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/fees': {
@@ -219,6 +239,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BatchesRoute: BatchesRoute,
   FeesRoute: FeesRoute,
+  RecoveryRoute: RecoveryRoute,
   SettingsRoute: SettingsRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,

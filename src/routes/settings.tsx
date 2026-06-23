@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { TemplatesTab } from "@/components/templates-tab";
 
 import {
   addMasterValue,
@@ -40,6 +41,7 @@ function SettingsPage() {
           <TabsList className="flex flex-wrap">
             <TabsTrigger value="institute">Institute</TabsTrigger>
             <TabsTrigger value="receipt">Receipt</TabsTrigger>
+            <TabsTrigger value="templates">Message Templates</TabsTrigger>
             <TabsTrigger value="academic">Academic</TabsTrigger>
             <TabsTrigger value="backend">Backend</TabsTrigger>
             <TabsTrigger value="subscription">Subscription</TabsTrigger>
@@ -47,6 +49,7 @@ function SettingsPage() {
 
           <TabsContent value="institute"><InstituteTab /></TabsContent>
           <TabsContent value="receipt"><ReceiptTab /></TabsContent>
+          <TabsContent value="templates"><TemplatesTab /></TabsContent>
           <TabsContent value="academic"><AcademicTab /></TabsContent>
           <TabsContent value="backend"><BackendTab /></TabsContent>
           <TabsContent value="subscription"><SubscriptionTab /></TabsContent>
