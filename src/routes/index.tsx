@@ -109,7 +109,7 @@ function Dashboard() {
     <>
       <AppHeader
         title="Welcome back, Dnyanpeeth"
-        subtitle={new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        subtitle={typeof window === "undefined" ? "Today's overview" : new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
         actions={
           <>
             <Button asChild>
