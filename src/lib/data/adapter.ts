@@ -1,32 +1,33 @@
 /**
- * Data adapter.
+ * Data adapter — single contract for the UI. Today this uses in-memory mock
+ * data; swap the bodies to call your Google Apps Script web app (or Supabase)
+ * without changing the components.
  *
- * The UI talks only to this module — never to mock arrays or Google Sheets
- * directly. To migrate to Google Sheets / Supabase / Firebase, swap the
- * implementations below. The function signatures are the contract.
- *
- * ---- Google Sheets via Apps Script (later) ----
- * 1. Publish a Google Apps Script Web App that exposes:
- *      doGet(e)  -> JSON for ?op=listStudents, etc.
- *      doPost(e) -> JSON for { op: "addPayment", payload: {...} }
- * 2. Set VITE_SHEETS_API_URL in .env to the web-app URL.
- * 3. Replace the bodies of these functions with `fetch(SHEETS_URL, ...)`.
- *    Keep return shapes identical.
+ * Every record is tenant-scoped via instituteId so the same code can serve
+ * multiple coaching institutes (super-admin / multi-tenant ready).
  */
 
 import { batches, payments, students } from "./mock";
 import type { Batch, Payment, Student } from "./types";
+import { getSettings, nextReceiptNumber } from "@/lib/settings/store";
+
+const activeInstituteId = () => getSettings().institute.id;
 
 // --- Students ---
 export async function listStudents(): Promise<Student[]> {
-  return [...students];
+  const id = activeInstituteId();
+  return students.filter((s) => !s.instituteId || s.instituteId === id || s.instituteId === "inst_default");
 }
 export async function getStudent(id: string): Promise<Student | undefined> {
   return students.find((s) => s.id === id);
 }
-export async function createStudent(s: Omit<Student, "id">): Promise<Student> {
-  const created: Student = { ...s, id: `s${students.length + 1}` };
-  students.push(created);
+export async function createStudent(s: Omit<Student, "id" | "instituteId">): Promise<Student> {
+  const created: Student = {
+    ...s,
+    id: `s${Date.now()}`,
+    instituteId: activeInstituteId(),
+  };
+  students.unshift(created);
   return created;
 }
 export async function updateStudent(id: string, patch: Partial<Student>) {
@@ -38,23 +39,44 @@ export async function updateStudent(id: string, patch: Partial<Student>) {
 
 // --- Batches ---
 export async function listBatches(): Promise<Batch[]> {
-  return [...batches];
+  const id = activeInstituteId();
+  return batches.filter((b) => !b.instituteId || b.instituteId === id || b.instituteId === "inst_default");
+}
+export async function createBatch(b: Omit<Batch, "id" | "instituteId">): Promise<Batch> {
+  const created: Batch = { ...b, id: `b${Date.now()}`, instituteId: activeInstituteId() };
+  batches.push(created);
+  return created;
+}
+export async function updateBatch(id: string, patch: Partial<Batch>): Promise<Batch> {
+  const i = batches.findIndex((b) => b.id === id);
+  if (i < 0) throw new Error("Batch not found");
+  batches[i] = { ...batches[i], ...patch };
+  return batches[i];
+}
+export async function deleteBatch(id: string): Promise<void> {
+  const i = batches.findIndex((b) => b.id === id);
+  if (i >= 0) batches.splice(i, 1);
 }
 
 // --- Payments ---
 export async function listPayments(): Promise<Payment[]> {
-  return [...payments];
+  const id = activeInstituteId();
+  return payments.filter((p) => !p.instituteId || p.instituteId === id || p.instituteId === "inst_default");
 }
 export async function listPaymentsByStudent(studentId: string): Promise<Payment[]> {
   return payments.filter((p) => p.studentId === studentId);
 }
 export async function recordPayment(
-  input: Omit<Payment, "id" | "receiptNo">,
+  input: Omit<Payment, "id" | "receiptNo" | "instituteId">,
 ): Promise<Payment> {
-  const receiptNo = `R-${1000 + payments.length + 1}`;
-  const created: Payment = { ...input, id: `p${payments.length + 1}`, receiptNo };
+  const receiptNo = nextReceiptNumber();
+  const created: Payment = {
+    ...input,
+    id: `p${Date.now()}`,
+    receiptNo,
+    instituteId: activeInstituteId(),
+  };
   payments.unshift(created);
-  // Update student's paid fee
   const st = students.find((s) => s.id === input.studentId);
   if (st) st.paidFee = Math.min(st.totalFee - st.discount, st.paidFee + input.amount);
   return created;
