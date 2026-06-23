@@ -25,6 +25,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { listPayments, listStudents, recordPayment } from "@/lib/data/adapter";
 import { fmtDate, initials, inr } from "@/lib/format";
 import type { Payment } from "@/lib/data/types";
+import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
+import { getMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
 
 const q = {
   queryKey: ["fees-page"],
