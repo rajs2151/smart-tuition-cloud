@@ -1,16 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Plus, Search, Filter, Phone } from "lucide-react";
+import { Search, Filter, Phone } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AddStudentDialog } from "@/components/add-student-dialog";
 
 import { listBatches, listStudents } from "@/lib/data/adapter";
 import { initials, inr } from "@/lib/format";
@@ -65,11 +65,7 @@ function StudentsPage() {
       <AppHeader
         title="Students"
         subtitle={`${data.students.length} total · ${data.students.filter((s) => s.status === "active").length} active`}
-        actions={
-          <Button>
-            <Plus className="h-4 w-4" /> Add student
-          </Button>
-        }
+        actions={<AddStudentDialog />}
       />
 
       <main className="flex-1 space-y-4 p-4 md:p-6">
