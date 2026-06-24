@@ -405,8 +405,7 @@ function ProfitTab() {
   const expenses = listExpenses();
   const [data, setData] = useState<{ revenue: number; monthly: { m: string; rev: number; exp: number; profit: number }[] } | null>(null);
 
-  // load payments once
-  useMemo(() => {
+  useEffect(() => {
     listPayments().then((payments) => {
       const revenue = payments.reduce((a, p) => a + p.amount, 0);
       const months: { m: string; rev: number; exp: number; profit: number }[] = [];
