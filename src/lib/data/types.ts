@@ -33,6 +33,9 @@ export type Batch = {
   // legacy/display
   course?: string;
   strength?: number;
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 };
 
 export type Installment = {
@@ -76,6 +79,10 @@ export type Student = {
 
   // legacy
   course?: string;
+
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 };
 
 export type PaymentMode = "Cash" | "UPI" | "Bank Transfer" | "Card" | "Cheque";
@@ -90,6 +97,10 @@ export type Payment = {
   receiptNo: string;
   note?: string;
   type: "fee" | "fine" | "advance" | "admission";
+
+  deleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
 };
 
 export type Receipt = {
