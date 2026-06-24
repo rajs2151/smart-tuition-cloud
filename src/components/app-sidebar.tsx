@@ -10,6 +10,8 @@ import {
   BarChart3,
   Settings,
   GraduationCap,
+  Wallet,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -30,8 +32,10 @@ const main = [
   { title: "Students", url: "/students", icon: Users },
   { title: "Batches", url: "/batches", icon: BookOpen },
   { title: "Fees", url: "/fees", icon: IndianRupee },
+  { title: "Expenses", url: "/expenses", icon: Wallet },
   { title: "Recovery & WhatsApp", url: "/recovery", icon: MessageCircle },
   { title: "Receipts", url: "/receipts", icon: Receipt },
+  { title: "Recycle Bin", url: "/recycle-bin", icon: Trash2 },
 ];
 
 const upcoming = [
