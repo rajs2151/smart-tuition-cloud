@@ -11,8 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RecycleBinRouteImport } from './routes/recycle-bin'
 import { Route as RecoveryRouteImport } from './routes/recovery'
 import { Route as FeesRouteImport } from './routes/fees'
+import { Route as ExpensesRouteImport } from './routes/expenses'
 import { Route as BatchesRouteImport } from './routes/batches'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as StudentsIndexRouteImport } from './routes/students.index'
@@ -30,6 +32,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RecycleBinRoute = RecycleBinRouteImport.update({
+  id: '/recycle-bin',
+  path: '/recycle-bin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RecoveryRoute = RecoveryRouteImport.update({
   id: '/recovery',
   path: '/recovery',
@@ -38,6 +45,11 @@ const RecoveryRoute = RecoveryRouteImport.update({
 const FeesRoute = FeesRouteImport.update({
   id: '/fees',
   path: '/fees',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExpensesRoute = ExpensesRouteImport.update({
+  id: '/expenses',
+  path: '/expenses',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BatchesRoute = BatchesRouteImport.update({
@@ -74,8 +86,10 @@ const ReceiptsIdRoute = ReceiptsIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/batches': typeof BatchesRoute
+  '/expenses': typeof ExpensesRoute
   '/fees': typeof FeesRoute
   '/recovery': typeof RecoveryRoute
+  '/recycle-bin': typeof RecycleBinRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -86,8 +100,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/batches': typeof BatchesRoute
+  '/expenses': typeof ExpensesRoute
   '/fees': typeof FeesRoute
   '/recovery': typeof RecoveryRoute
+  '/recycle-bin': typeof RecycleBinRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -99,8 +115,10 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/batches': typeof BatchesRoute
+  '/expenses': typeof ExpensesRoute
   '/fees': typeof FeesRoute
   '/recovery': typeof RecoveryRoute
+  '/recycle-bin': typeof RecycleBinRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/receipts/$id': typeof ReceiptsIdRoute
@@ -113,8 +131,10 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/batches'
+    | '/expenses'
     | '/fees'
     | '/recovery'
+    | '/recycle-bin'
     | '/settings'
     | '/sitemap.xml'
     | '/receipts/$id'
@@ -125,8 +145,10 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/batches'
+    | '/expenses'
     | '/fees'
     | '/recovery'
+    | '/recycle-bin'
     | '/settings'
     | '/sitemap.xml'
     | '/receipts/$id'
@@ -137,8 +159,10 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/batches'
+    | '/expenses'
     | '/fees'
     | '/recovery'
+    | '/recycle-bin'
     | '/settings'
     | '/sitemap.xml'
     | '/receipts/$id'
@@ -150,8 +174,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BatchesRoute: typeof BatchesRoute
+  ExpensesRoute: typeof ExpensesRoute
   FeesRoute: typeof FeesRoute
   RecoveryRoute: typeof RecoveryRoute
+  RecycleBinRoute: typeof RecycleBinRoute
   SettingsRoute: typeof SettingsRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   ReceiptsIdRoute: typeof ReceiptsIdRoute
@@ -176,6 +202,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/recycle-bin': {
+      id: '/recycle-bin'
+      path: '/recycle-bin'
+      fullPath: '/recycle-bin'
+      preLoaderRoute: typeof RecycleBinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/recovery': {
       id: '/recovery'
       path: '/recovery'
@@ -188,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/fees'
       fullPath: '/fees'
       preLoaderRoute: typeof FeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/expenses': {
+      id: '/expenses'
+      path: '/expenses'
+      fullPath: '/expenses'
+      preLoaderRoute: typeof ExpensesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/batches': {
@@ -238,8 +278,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BatchesRoute: BatchesRoute,
+  ExpensesRoute: ExpensesRoute,
   FeesRoute: FeesRoute,
   RecoveryRoute: RecoveryRoute,
+  RecycleBinRoute: RecycleBinRoute,
   SettingsRoute: SettingsRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   ReceiptsIdRoute: ReceiptsIdRoute,
