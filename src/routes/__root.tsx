@@ -14,6 +14,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import { AuthGate } from "@/components/auth-gate";
 
 function NotFoundComponent() {
   return (
@@ -138,14 +139,18 @@ function RootComponent() {
 
 function AppShell() {
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
-        <AppSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Outlet />
-        </div>
-      </div>
+    <>
+      <AuthGate>
+        <SidebarProvider>
+          <div className="flex min-h-screen w-full bg-background">
+            <AppSidebar />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <Outlet />
+            </div>
+          </div>
+        </SidebarProvider>
+      </AuthGate>
       <Toaster richColors position="top-right" />
-    </SidebarProvider>
+    </>
   );
 }

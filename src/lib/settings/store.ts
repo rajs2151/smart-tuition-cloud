@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import type {
   AppSettings,
   Board,
@@ -10,17 +11,15 @@ import type {
   Standard,
 } from "@/lib/data/types";
 
-const STORAGE_KEY = "vidyafee.settings.v1";
-
 export const DEFAULT_INSTITUTE: InstituteProfile = {
-  id: "inst_default",
-  name: "Dnyanpeeth Classes",
+  id: "",
+  name: "",
   logoUrl: "",
-  address: "FC Road, Pune, Maharashtra 411004",
-  phone: "+91 98765 43210",
-  email: "hello@dnyanpeeth.in",
-  website: "www.dnyanpeeth.in",
-  gstNumber: "27ABCDE1234F1Z5",
+  address: "",
+  phone: "",
+  email: "",
+  website: "",
+  gstNumber: "",
 };
 
 export const DEFAULT_RECEIPT: ReceiptConfig = {
@@ -37,8 +36,8 @@ export const DEFAULT_RECEIPT: ReceiptConfig = {
 
 export const DEFAULT_MASTER: MasterSettings = {
   standards: [
-    "1st", "2nd", "3rd", "4th", "5th", "6th",
-    "7th", "8th", "9th", "10th", "11th", "12th",
+    "1st","2nd","3rd","4th","5th","6th",
+    "7th","8th","9th","10th","11th","12th",
   ],
   boards: ["State Board", "CBSE"],
   mediums: ["Marathi", "Semi English", "English"],
@@ -51,62 +50,102 @@ export const DEFAULT_SETTINGS: AppSettings = {
   master: DEFAULT_MASTER,
 };
 
-let state: AppSettings = load();
+let state: AppSettings = DEFAULT_SETTINGS;
 const listeners = new Set<() => void>();
 
-function load(): AppSettings {
-  if (typeof window === "undefined") return DEFAULT_SETTINGS;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    return {
-      institute: { ...DEFAULT_INSTITUTE, ...(parsed.institute ?? {}) },
-      receipt: { ...DEFAULT_RECEIPT, ...(parsed.receipt ?? {}) },
-      master: { ...DEFAULT_MASTER, ...(parsed.master ?? {}) },
-    };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
+function emit() { listeners.forEach((l) => l()); }
+
+export function getSettings(): AppSettings { return state; }
+
+/** Called by session bootstrapping with the loaded institute row from Supabase. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function hydrateSettingsFromDb(row: any) {
+  state = {
+    institute: {
+      id: row.id,
+      name: row.name ?? "",
+      logoUrl: row.logo_url ?? "",
+      address: row.address ?? "",
+      phone: row.phone ?? "",
+      email: row.email ?? "",
+      website: row.website ?? "",
+      gstNumber: row.gst_number ?? "",
+    },
+    receipt: {
+      prefix: row.receipt_prefix ?? "REC",
+      nextNumber: row.receipt_next_number ?? 1001,
+      footerText: row.receipt_footer_text ?? "",
+      termsAndConditions: row.receipt_terms ?? "",
+      authorizedSignatory: row.receipt_authorized_signatory ?? "Authorized Signatory",
+      showGst: !!row.receipt_show_gst,
+      showLogo: row.receipt_show_logo ?? true,
+      showFooter: row.receipt_show_footer ?? true,
+    },
+    master: {
+      standards: (row.master_standards ?? DEFAULT_MASTER.standards) as Standard[],
+      boards: (row.master_boards ?? DEFAULT_MASTER.boards) as Board[],
+      mediums: (row.master_mediums ?? DEFAULT_MASTER.mediums) as Medium[],
+      examCategories: (row.master_exam_categories ?? DEFAULT_MASTER.examCategories) as ExamCategory[],
+    },
+  };
+  emit();
 }
 
-function persist() {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    /* quota */
-  }
+export function resetSettings() {
+  state = DEFAULT_SETTINGS;
+  emit();
 }
 
-function emit() {
-  listeners.forEach((l) => l());
-}
-
-export function getSettings(): AppSettings {
-  return state;
+async function pushInstituteUpdate(patch: Record<string, unknown>) {
+  if (!state.institute.id) return;
+  const { error } = await supabase
+    .from("institutes")
+    .update(patch)
+    .eq("id", state.institute.id);
+  if (error) console.error("[settings] institute update", error);
 }
 
 export function setInstitute(patch: Partial<InstituteProfile>) {
   state = { ...state, institute: { ...state.institute, ...patch } };
-  persist();
   emit();
-}
-export function setReceiptConfig(patch: Partial<ReceiptConfig>) {
-  state = { ...state, receipt: { ...state.receipt, ...patch } };
-  persist();
-  emit();
-}
-export function setMaster(patch: Partial<MasterSettings>) {
-  state = { ...state, master: { ...state.master, ...patch } };
-  persist();
-  emit();
+  const dbPatch: Record<string, unknown> = {};
+  if ("name" in patch) dbPatch.name = patch.name;
+  if ("logoUrl" in patch) dbPatch.logo_url = patch.logoUrl;
+  if ("address" in patch) dbPatch.address = patch.address;
+  if ("phone" in patch) dbPatch.phone = patch.phone;
+  if ("email" in patch) dbPatch.email = patch.email;
+  if ("website" in patch) dbPatch.website = patch.website;
+  if ("gstNumber" in patch) dbPatch.gst_number = patch.gstNumber;
+  if (Object.keys(dbPatch).length) void pushInstituteUpdate(dbPatch);
 }
 
-export function addMasterValue(
-  key: keyof MasterSettings,
-  value: string,
-) {
+export function setReceiptConfig(patch: Partial<ReceiptConfig>) {
+  state = { ...state, receipt: { ...state.receipt, ...patch } };
+  emit();
+  const dbPatch: Record<string, unknown> = {};
+  if ("prefix" in patch) dbPatch.receipt_prefix = patch.prefix;
+  if ("nextNumber" in patch) dbPatch.receipt_next_number = patch.nextNumber;
+  if ("footerText" in patch) dbPatch.receipt_footer_text = patch.footerText;
+  if ("termsAndConditions" in patch) dbPatch.receipt_terms = patch.termsAndConditions;
+  if ("authorizedSignatory" in patch) dbPatch.receipt_authorized_signatory = patch.authorizedSignatory;
+  if ("showGst" in patch) dbPatch.receipt_show_gst = patch.showGst;
+  if ("showLogo" in patch) dbPatch.receipt_show_logo = patch.showLogo;
+  if ("showFooter" in patch) dbPatch.receipt_show_footer = patch.showFooter;
+  if (Object.keys(dbPatch).length) void pushInstituteUpdate(dbPatch);
+}
+
+export function setMaster(patch: Partial<MasterSettings>) {
+  state = { ...state, master: { ...state.master, ...patch } };
+  emit();
+  const dbPatch: Record<string, unknown> = {};
+  if ("standards" in patch) dbPatch.master_standards = patch.standards;
+  if ("boards" in patch) dbPatch.master_boards = patch.boards;
+  if ("mediums" in patch) dbPatch.master_mediums = patch.mediums;
+  if ("examCategories" in patch) dbPatch.master_exam_categories = patch.examCategories;
+  if (Object.keys(dbPatch).length) void pushInstituteUpdate(dbPatch);
+}
+
+export function addMasterValue(key: keyof MasterSettings, value: string) {
   const list = state.master[key] as string[];
   if (!value.trim() || list.includes(value)) return;
   setMaster({ [key]: [...list, value] } as Partial<MasterSettings>);
@@ -116,10 +155,15 @@ export function removeMasterValue(key: keyof MasterSettings, value: string) {
   setMaster({ [key]: list.filter((v) => v !== value) } as Partial<MasterSettings>);
 }
 
+/**
+ * Legacy synchronous receipt-number generator used by non-DB code paths.
+ * The Supabase-backed adapter uses the `next_receipt_number` RPC instead
+ * so numbers are allocated atomically per institute.
+ */
 export function nextReceiptNumber(): string {
   const n = state.receipt.nextNumber;
   setReceiptConfig({ nextNumber: n + 1 });
-  return `${state.receipt.prefix}-${n}`;
+  return `${state.receipt.prefix}-${String(n).padStart(4, "0")}`;
 }
 
 export function useSettings(): AppSettings {
@@ -133,5 +177,4 @@ export function useSettings(): AppSettings {
   );
 }
 
-// Convenience typed re-exports
 export type { Standard, Board, Medium, ExamCategory };
