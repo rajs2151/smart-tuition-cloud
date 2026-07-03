@@ -46,7 +46,7 @@ function toBatch(r: any): Batch {
     deletedBy: r.deleted_by ?? undefined,
   };
 }
-function fromBatch(b: Partial<Batch>) {
+function fromBatch(b: Partial<Batch>): any {
   const row: Record<string, unknown> = {};
   if (b.name !== undefined) row.name = b.name;
   if (b.type !== undefined) row.type = b.type;
@@ -98,7 +98,7 @@ function toStudent(r: any): Student {
     deletedBy: r.deleted_by ?? undefined,
   };
 }
-function fromStudent(s: Partial<Student>) {
+function fromStudent(s: Partial<Student>): any {
   const row: Record<string, unknown> = {};
   if (s.rollNo !== undefined) row.roll_no = s.rollNo;
   if (s.name !== undefined) row.name = s.name;
@@ -344,7 +344,7 @@ export async function recordPayment(
 }
 
 export async function updatePayment(id: string, patch: Partial<Payment>) {
-  const row: Record<string, unknown> = {};
+  const row: any = {};
   if (patch.amount !== undefined) row.amount = patch.amount;
   if (patch.date !== undefined) row.date = patch.date;
   if (patch.mode !== undefined) row.mode = patch.mode;

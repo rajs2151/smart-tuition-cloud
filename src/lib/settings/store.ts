@@ -96,7 +96,7 @@ export function resetSettings() {
   emit();
 }
 
-async function pushInstituteUpdate(patch: Record<string, unknown>) {
+async function pushInstituteUpdate(patch: any) {
   if (!state.institute.id) return;
   const { error } = await supabase
     .from("institutes")
