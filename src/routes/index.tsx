@@ -117,6 +117,50 @@ function Dashboard() {
 
   const recent = payments.slice(0, 6);
 
+  // Pending reminders — installments due within the next N days or already overdue.
+  const REMINDER_WINDOW_DAYS = 7;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cutoff = new Date(today);
+  cutoff.setDate(cutoff.getDate() + REMINDER_WINDOW_DAYS);
+  const reminders = students
+    .flatMap((s) => {
+      const batch = batches.find((b) => b.id === s.batchId);
+      return (s.installments ?? [])
+        .filter((i) => !i.paid && i.dueDate)
+        .map((i) => {
+          const due = new Date(i.dueDate);
+          const daysDiff = Math.round((due.getTime() - today.getTime()) / 86400000);
+          return { student: s, batch, installment: i, daysDiff };
+        })
+        .filter((r) => r.installment && new Date(r.installment.dueDate) <= cutoff);
+    })
+    .sort((a, b) => a.daysDiff - b.daysDiff)
+    .slice(0, 6);
+
+  const sendReminder = (studentId: string, dueDate: string, amount: number) => {
+    const st = students.find((x) => x.id === studentId);
+    if (!st) return;
+    const batch = batches.find((b) => b.id === st.batchId);
+    const mobile = pickMobile(st);
+    if (!mobile) {
+      toast.error("No contact number on file for this student.");
+      return;
+    }
+    const { templates, defaults } = getMessaging();
+    const tpl = templates.find((t) => t.id === defaults.reminder) ?? templates[0];
+    if (!tpl) {
+      toast.error("No reminder template configured.");
+      return;
+    }
+    const msg = renderMessage(
+      tpl,
+      buildContext({ student: st, batch, pending: amount, dueDate }),
+    );
+    openWhatsApp(mobile, msg);
+  };
+
+
   // batch revenue
   const batchRevenue = batches.map((b) => {
     const sIds = students.filter((s) => s.batchId === b.id);
