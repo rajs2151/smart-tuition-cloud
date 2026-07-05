@@ -1,6 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { ArrowLeft, Download, MessageCircle, Printer } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/ui/card";
@@ -10,6 +11,10 @@ import { Separator } from "@/components/ui/separator";
 import { getStudent, listBatches, listPayments } from "@/lib/data/adapter";
 import { fmtDate, inr } from "@/lib/format";
 import { useSettings } from "@/lib/settings/store";
+import { exportElementToPdf } from "@/lib/pdf/export";
+import { getMessaging } from "@/lib/messaging/store";
+import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/receipts/$id")({
   loader: async ({ params, context }) => {
