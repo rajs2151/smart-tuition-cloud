@@ -21,11 +21,14 @@ import {
   Users,
   AlertCircle,
   BookOpen,
+  Bell,
+  MessageCircle,
   Receipt as ReceiptIcon,
   UserPlus,
   Sparkles,
   FileBarChart,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
