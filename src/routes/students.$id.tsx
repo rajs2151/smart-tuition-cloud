@@ -293,6 +293,16 @@ function StudentDetail() {
   );
 }
 
+function FormRow({ label, value }: { label: string; value: string }) {
+  return (
+    <tr>
+      <td className="w-56 border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</td>
+      <td className="border border-slate-300 px-3 py-2">{value}</td>
+    </tr>
+  );
+}
+
+
 function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="flex items-start gap-3">
