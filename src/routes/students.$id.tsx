@@ -1,8 +1,11 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   Calendar,
+  Download,
   IndianRupee,
   Mail,
   MapPin,
@@ -26,6 +29,10 @@ import {
   listPaymentsByStudent,
 } from "@/lib/data/adapter";
 import { fmtDate, initials, inr } from "@/lib/format";
+import { exportElementToPdf } from "@/lib/pdf/export";
+import { useSettings } from "@/lib/settings/store";
+import { getMessaging } from "@/lib/messaging/store";
+import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 
 export const Route = createFileRoute("/students/$id")({
   loader: async ({ params, context }) => {
