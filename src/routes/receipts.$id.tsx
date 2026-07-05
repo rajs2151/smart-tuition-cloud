@@ -1,6 +1,7 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { ArrowLeft, Download, MessageCircle, Printer } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { Card } from "@/components/ui/card";
@@ -10,6 +11,10 @@ import { Separator } from "@/components/ui/separator";
 import { getStudent, listBatches, listPayments } from "@/lib/data/adapter";
 import { fmtDate, inr } from "@/lib/format";
 import { useSettings } from "@/lib/settings/store";
+import { exportElementToPdf } from "@/lib/pdf/export";
+import { getMessaging } from "@/lib/messaging/store";
+import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/receipts/$id")({
   loader: async ({ params, context }) => {
@@ -49,6 +54,36 @@ function ReceiptDetail() {
 
   const billed = student.totalFee - student.discount;
   const balance = Math.max(0, billed - student.paidFee);
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const onDownload = async () => {
+    if (!receiptRef.current) return;
+    setDownloading(true);
+    try {
+      await exportElementToPdf(receiptRef.current, `Receipt-${payment.receiptNo}.pdf`);
+    } catch (e) {
+      toast.error(`Could not generate PDF: ${(e as Error).message}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const onWhatsApp = () => {
+    const mobile = pickMobile(student);
+    if (!mobile) {
+      toast.error("No contact number on file for this student.");
+      return;
+    }
+    const { templates, defaults } = getMessaging();
+    const tpl = templates.find((t) => t.id === defaults.acknowledgement) ?? templates[0];
+    if (!tpl) {
+      toast.error("No message template configured.");
+      return;
+    }
+    const msg = renderMessage(tpl, buildContext({ student, batch, payment }));
+    openWhatsApp(mobile, msg);
+  };
 
   return (
     <>
@@ -61,14 +96,16 @@ function ReceiptDetail() {
               <Link to="/receipts"><ArrowLeft className="h-4 w-4" /> Back</Link>
             </Button>
             <Button size="sm" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print A4</Button>
-            <Button variant="outline" size="sm"><Download className="h-4 w-4" /> Download PDF</Button>
-            <Button variant="outline" size="sm"><MessageCircle className="h-4 w-4" /> Send WhatsApp</Button>
+            <Button variant="outline" size="sm" onClick={onDownload} disabled={downloading}>
+              <Download className="h-4 w-4" /> {downloading ? "Generating…" : "Download PDF"}
+            </Button>
+            <Button variant="outline" size="sm" onClick={onWhatsApp}><MessageCircle className="h-4 w-4" /> Send WhatsApp</Button>
           </>
         }
       />
 
       <main className="flex-1 p-4 md:p-6">
-        <Card className="mx-auto max-w-2xl p-8 print:max-w-none print:border-0 print:shadow-none">
+        <Card ref={receiptRef} className="mx-auto max-w-2xl bg-white p-8 text-slate-900 print:max-w-none print:border-0 print:shadow-none">
           {/* Header */}
           <div className="flex items-start justify-between border-b pb-6">
             <div className="flex items-center gap-3">

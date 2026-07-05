@@ -1,8 +1,11 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   Calendar,
+  Download,
   IndianRupee,
   Mail,
   MapPin,
@@ -26,6 +29,10 @@ import {
   listPaymentsByStudent,
 } from "@/lib/data/adapter";
 import { fmtDate, initials, inr } from "@/lib/format";
+import { exportElementToPdf } from "@/lib/pdf/export";
+import { useSettings } from "@/lib/settings/store";
+import { getMessaging } from "@/lib/messaging/store";
+import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 
 export const Route = createFileRoute("/students/$id")({
   loader: async ({ params, context }) => {
@@ -73,6 +80,37 @@ function StudentDetail() {
   const billed = s.totalFee - s.discount;
   const due = Math.max(0, billed - s.paidFee);
   const pct = Math.round((s.paidFee / Math.max(1, billed)) * 100);
+  const { institute } = useSettings();
+  const admissionRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const onDownloadAdmission = async () => {
+    if (!admissionRef.current) return;
+    setDownloading(true);
+    try {
+      await exportElementToPdf(admissionRef.current, `AdmissionForm-${s.rollNo || s.name}.pdf`);
+    } catch (e) {
+      toast.error(`Could not generate PDF: ${(e as Error).message}`);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const onWhatsAppReminder = () => {
+    const mobile = pickMobile(s);
+    if (!mobile) {
+      toast.error("No contact number on file for this student.");
+      return;
+    }
+    const { templates, defaults } = getMessaging();
+    const tpl = templates.find((t) => t.id === defaults.reminder) ?? templates[0];
+    if (!tpl) {
+      toast.error("No message template configured.");
+      return;
+    }
+    const msg = renderMessage(tpl, buildContext({ student: s, batch, pending: due }));
+    openWhatsApp(mobile, msg);
+  };
 
   return (
     <>
@@ -84,15 +122,80 @@ function StudentDetail() {
             <Button variant="outline" size="sm" asChild>
               <Link to="/students"><ArrowLeft className="h-4 w-4" /> Back</Link>
             </Button>
+            <Button variant="outline" size="sm" onClick={onDownloadAdmission} disabled={downloading}>
+              <Download className="h-4 w-4" /> {downloading ? "Generating…" : "Admission form PDF"}
+            </Button>
             <Button size="sm">
               <Plus className="h-4 w-4" /> Record payment
             </Button>
-            <Button size="sm" variant="outline">
+            <Button size="sm" variant="outline" onClick={onWhatsAppReminder}>
               <MessageCircle className="h-4 w-4" /> Send WhatsApp reminder
             </Button>
           </>
         }
       />
+
+      {/* Off-screen printable admission form used for PDF snapshot */}
+      <div className="pointer-events-none fixed -left-[9999px] top-0" aria-hidden>
+        <div ref={admissionRef} className="w-[794px] bg-white p-10 text-slate-900" style={{ fontFamily: "sans-serif" }}>
+          <div className="flex items-start justify-between border-b border-slate-300 pb-4">
+            <div>
+              <h1 className="text-2xl font-bold">{institute.name}</h1>
+              <p className="text-xs text-slate-600">{institute.address}</p>
+              <p className="text-xs text-slate-600">{institute.phone} · {institute.email}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Admission Form</p>
+              <p className="text-sm font-mono">Roll No: {s.rollNo || "—"}</p>
+              <p className="text-xs text-slate-500">Admitted {fmtDate(s.admissionDate)}</p>
+            </div>
+          </div>
+
+          <h2 className="mt-6 text-sm font-bold uppercase tracking-wide text-slate-500">Student details</h2>
+          <table className="mt-2 w-full border-collapse text-sm">
+            <tbody>
+              <FormRow label="Full name" value={s.name} />
+              <FormRow label="Phone" value={s.phone} />
+              <FormRow label="Email" value={s.email || "—"} />
+              <FormRow label="Address" value={s.address || "—"} />
+              <FormRow label="Parent / guardian" value={`${s.parentName ?? "—"}${s.parentPhone ? " · " + s.parentPhone : ""}`} />
+            </tbody>
+          </table>
+
+          <h2 className="mt-6 text-sm font-bold uppercase tracking-wide text-slate-500">Academic</h2>
+          <table className="mt-2 w-full border-collapse text-sm">
+            <tbody>
+              <FormRow label="Batch" value={batch?.name ?? s.course ?? "—"} />
+              {s.standard && <FormRow label="Standard / Board / Medium" value={`${s.standard} · ${s.board ?? ""} · ${s.medium ?? ""}`} />}
+              {s.examCategory && <FormRow label="Exam" value={`${s.examCategory} ${batch?.examYear ?? ""}`} />}
+              <FormRow label="Faculty" value={batch?.faculty ?? "—"} />
+            </tbody>
+          </table>
+
+          <h2 className="mt-6 text-sm font-bold uppercase tracking-wide text-slate-500">Fee structure</h2>
+          <table className="mt-2 w-full border-collapse text-sm">
+            <tbody>
+              <FormRow label="Course fee" value={inr(s.courseFee || s.totalFee)} />
+              <FormRow label="Admission fee" value={inr(s.admissionFee)} />
+              <FormRow label="Discount" value={inr(s.discount)} />
+              <FormRow label="Total payable" value={inr(billed)} />
+              <FormRow label="Amount paid" value={inr(s.paidFee)} />
+              <FormRow label="Balance" value={inr(due)} />
+            </tbody>
+          </table>
+
+          <div className="mt-16 flex justify-between text-xs text-slate-600">
+            <div>
+              <div className="h-10 w-40 border-b border-dashed border-slate-400" />
+              <p className="mt-1">Parent / Guardian signature</p>
+            </div>
+            <div className="text-right">
+              <div className="h-10 w-40 border-b border-dashed border-slate-400" />
+              <p className="mt-1">For {institute.name}</p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <main className="flex-1 space-y-6 p-4 md:p-6">
         <div className="grid gap-6 lg:grid-cols-3">
@@ -189,6 +292,16 @@ function StudentDetail() {
     </>
   );
 }
+
+function FormRow({ label, value }: { label: string; value: string }) {
+  return (
+    <tr>
+      <td className="w-56 border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</td>
+      <td className="border border-slate-300 px-3 py-2">{value}</td>
+    </tr>
+  );
+}
+
 
 function Row({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
