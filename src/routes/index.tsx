@@ -41,6 +41,8 @@ import { AddStudentDialog } from "@/components/add-student-dialog";
 import { listBatches, listPayments, listStudents } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
 import { fmtDate, initials, inr, inrShort } from "@/lib/format";
+import { getMessaging } from "@/lib/messaging/store";
+import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 
 const dashboardQuery = {
   queryKey: ["dashboard"],
