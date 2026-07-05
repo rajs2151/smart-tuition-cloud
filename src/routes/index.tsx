@@ -292,6 +292,80 @@ function Dashboard() {
           </Card>
         </div>
 
+        {/* Pending reminders — installments due soon or overdue */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bell className="h-4 w-4 text-warning-foreground" />
+                Pending reminders
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Installments overdue or due in the next {REMINDER_WINDOW_DAYS} days
+              </p>
+            </div>
+            <Badge variant="outline">{reminders.length}</Badge>
+          </CardHeader>
+          <CardContent>
+            {reminders.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No installments due in the next {REMINDER_WINDOW_DAYS} days. All caught up.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {reminders.map(({ student, batch, installment, daysDiff }) => {
+                  const overdue = daysDiff < 0;
+                  const dueLabel = overdue
+                    ? `Overdue by ${Math.abs(daysDiff)} day${Math.abs(daysDiff) === 1 ? "" : "s"}`
+                    : daysDiff === 0
+                      ? "Due today"
+                      : `Due in ${daysDiff} day${daysDiff === 1 ? "" : "s"}`;
+                  return (
+                    <div
+                      key={`${student.id}-${installment.id}`}
+                      className="flex flex-wrap items-center gap-3 rounded-lg border bg-card/40 p-3"
+                    >
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback className="bg-warning/20 text-warning-foreground text-xs font-bold">
+                          {initials(student.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            to="/students/$id"
+                            params={{ id: student.id }}
+                            className="truncate font-medium hover:underline"
+                          >
+                            {student.name}
+                          </Link>
+                          <Badge
+                            variant={overdue ? "destructive" : "secondary"}
+                            className="text-[10px]"
+                          >
+                            {dueLabel}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {batch?.name ?? student.course ?? "—"} ·{" "}
+                          {inr(installment.amount)} · Due {fmtDate(installment.dueDate)}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => sendReminder(student.id, installment.dueDate, installment.amount)}
+                      >
+                        <MessageCircle className="h-4 w-4" /> WhatsApp
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="grid gap-6 xl:grid-cols-3">
           {/* Defaulters */}
           <Card className="xl:col-span-2">
