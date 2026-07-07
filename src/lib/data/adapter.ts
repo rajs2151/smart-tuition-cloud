@@ -152,10 +152,12 @@ function toPayment(r: any): Payment {
 // ============ Students ============
 
 export async function listStudents(includeDeleted = false): Promise<Student[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
   const q = supabase
     .from("students")
     .select("*")
-    .eq("institute_id", activeInstituteId())
+    .eq("institute_id", instId)
     .order("created_at", { ascending: false });
   const { data, error } = includeDeleted ? await q : await q.eq("deleted", false);
   if (error) throw error;
