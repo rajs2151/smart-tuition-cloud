@@ -193,6 +193,7 @@ export type Database = {
           receipt_show_gst: boolean
           receipt_show_logo: boolean
           receipt_terms: string
+          subscription_status: string
           updated_at: string
           website: string | null
         }
@@ -218,6 +219,7 @@ export type Database = {
           receipt_show_gst?: boolean
           receipt_show_logo?: boolean
           receipt_terms?: string
+          subscription_status?: string
           updated_at?: string
           website?: string | null
         }
@@ -243,6 +245,7 @@ export type Database = {
           receipt_show_gst?: boolean
           receipt_show_logo?: boolean
           receipt_terms?: string
+          subscription_status?: string
           updated_at?: string
           website?: string | null
         }
