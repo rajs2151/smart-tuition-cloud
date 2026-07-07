@@ -18,6 +18,12 @@ const activeInstituteId = () => {
   if (!id) throw new Error("No active institute — user must be signed in and belong to an institute.");
   return id;
 };
+/** Returns the active institute id, or null when there is no session yet
+ *  (SSR, signed-out, or pre-onboarding). List queries use this to short-circuit
+ *  to an empty result during SSR so route loaders don't 500 before AuthGate mounts. */
+const activeInstituteIdOrNull = (): string | null => {
+  return getSession().instituteId ?? getSettings().institute.id ?? null;
+};
 
 // ============ mappers ============
 
@@ -146,10 +152,12 @@ function toPayment(r: any): Payment {
 // ============ Students ============
 
 export async function listStudents(includeDeleted = false): Promise<Student[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
   const q = supabase
     .from("students")
     .select("*")
-    .eq("institute_id", activeInstituteId())
+    .eq("institute_id", instId)
     .order("created_at", { ascending: false });
   const { data, error } = includeDeleted ? await q : await q.eq("deleted", false);
   if (error) throw error;
@@ -218,10 +226,12 @@ export async function purgeStudent(id: string) {
 // ============ Batches ============
 
 export async function listBatches(includeDeleted = false): Promise<Batch[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
   const q = supabase
     .from("batches")
     .select("*")
-    .eq("institute_id", activeInstituteId())
+    .eq("institute_id", instId)
     .order("created_at", { ascending: false });
   const { data, error } = includeDeleted ? await q : await q.eq("deleted", false);
   if (error) throw error;
@@ -282,10 +292,12 @@ export async function purgeBatch(id: string) {
 // ============ Payments ============
 
 export async function listPayments(includeDeleted = false): Promise<Payment[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
   const q = supabase
     .from("payments")
     .select("*")
-    .eq("institute_id", activeInstituteId())
+    .eq("institute_id", instId)
     .order("date", { ascending: false });
   const { data, error } = includeDeleted ? await q : await q.eq("deleted", false);
   if (error) throw error;
