@@ -18,6 +18,12 @@ const activeInstituteId = () => {
   if (!id) throw new Error("No active institute — user must be signed in and belong to an institute.");
   return id;
 };
+/** Returns the active institute id, or null when there is no session yet
+ *  (SSR, signed-out, or pre-onboarding). List queries use this to short-circuit
+ *  to an empty result during SSR so route loaders don't 500 before AuthGate mounts. */
+const activeInstituteIdOrNull = (): string | null => {
+  return getSession().instituteId ?? getSettings().institute.id ?? null;
+};
 
 // ============ mappers ============
 
