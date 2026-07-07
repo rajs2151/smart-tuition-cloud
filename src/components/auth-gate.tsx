@@ -91,6 +91,18 @@ function CreateInstituteScreen() {
     if (!session.userId) return;
     setBusy(true);
     try {
+      // Idempotency: if the user already has a membership, skip insert and refresh.
+      const { data: existing, error: exErr } = await supabase
+        .from("institute_members")
+        .select("institute_id")
+        .eq("user_id", session.userId)
+        .limit(1);
+      if (exErr) throw exErr;
+      if (existing && existing.length > 0) {
+        await refreshMembership();
+        return;
+      }
+
       const { error } = await supabase.from("institutes").insert({
         name: name.trim(),
         phone: phone.trim(),
