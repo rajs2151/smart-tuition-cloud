@@ -24,10 +24,72 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (session.status === "signed-out") return <SignInScreen />;
+  if (session.status === "error") return <SessionErrorScreen />;
   if (session.status === "no-institute") return <CreateInstituteScreen />;
+  if (session.status === "disabled") return <DisabledAccountScreen />;
   if (session.status === "expired") return <SubscriptionStatusScreen kind="expired" />;
   if (session.status === "blocked") return <SubscriptionStatusScreen kind="blocked" />;
   return <>{children}</>;
+}
+
+function SessionErrorScreen() {
+  const session = useSession();
+  const [busy, setBusy] = useState(false);
+  const onRetry = async () => {
+    setBusy(true);
+    try {
+      await refreshMembership();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const onSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-background px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+        <h1 className="font-heading text-2xl font-bold text-foreground">Something went wrong</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          {session.errorMessage ?? "Couldn't load your account. Please try again."}
+        </p>
+        <div className="mt-6 flex gap-2">
+          <Button onClick={onRetry} disabled={busy} className="flex-1">
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Try again
+          </Button>
+          <Button variant="ghost" onClick={onSignOut}>
+            Sign out
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DisabledAccountScreen() {
+  const session = useSession();
+  const onSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-background px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+        <h1 className="font-heading text-2xl font-bold text-foreground">
+          Your account has been disabled.
+        </h1>
+        <p className="mt-3 text-sm text-muted-foreground">Please contact the administrator.</p>
+        {session.email ? (
+          <p className="mt-4 text-xs text-muted-foreground">Signed in as {session.email}</p>
+        ) : null}
+        <div className="mt-6">
+          <Button variant="outline" onClick={onSignOut} className="w-full">
+            Sign out
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SubscriptionStatusScreen({ kind }: { kind: "expired" | "blocked" }) {
@@ -89,12 +151,7 @@ function SignInScreen() {
             Fee management for coaching institutes.
           </p>
         </div>
-        <Button
-          onClick={onSignIn}
-          disabled={busy}
-          className="w-full gap-2"
-          size="lg"
-        >
+        <Button onClick={onSignIn} disabled={busy} className="w-full gap-2" size="lg">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
           Continue with Google
         </Button>
@@ -121,26 +178,31 @@ function CreateInstituteScreen() {
     if (!session.userId) return;
     setBusy(true);
     try {
-      // Idempotency: if the user already has a membership, skip insert and refresh.
-      const { data: existing, error: exErr } = await supabase
-        .from("institute_members")
-        .select("institute_id")
-        .eq("user_id", session.userId)
-        .limit(1);
-      if (exErr) throw exErr;
-      if (existing && existing.length > 0) {
-        await refreshMembership();
-        return;
-      }
-
-      const { error } = await supabase.from("institutes").insert({
-        name: name.trim(),
-        phone: phone.trim(),
-        address: address.trim(),
-        email: session.email ?? "",
-        created_by: session.userId,
+      // Single atomic call: creates the institute AND the owner membership
+      // in one DB transaction (see create_institute_with_owner RPC). This
+      // replaces the old "check if a membership exists, then insert" flow,
+      // which had a race window between the check and the insert — two
+      // fast/duplicate submissions could both pass the check and each
+      // create their own institute. The RPC is idempotent (safe to call
+      // again) and a unique index in the database is the final backstop
+      // against duplicate/orphan institute records even under concurrency.
+      const { error } = await supabase.rpc("create_institute_with_owner", {
+        _name: name.trim(),
+        _phone: phone.trim(),
+        _address: address.trim(),
+        _email: session.email ?? "",
       });
-      if (error) throw error;
+      if (error) {
+        // 23505 = unique_violation. This can only happen if two creation
+        // requests raced each other at the database level; it means an
+        // institute now exists for this user, so just load it instead of
+        // showing an error.
+        if ((error as { code?: string }).code === "23505") {
+          await refreshMembership();
+          return;
+        }
+        throw error;
+      }
       toast.success("Institute created");
       await refreshMembership();
     } catch (e) {
@@ -164,15 +226,30 @@ function CreateInstituteScreen() {
         <div className="mt-6 space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="i-name">Institute name *</Label>
-            <Input id="i-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Dnyanpeeth Classes" />
+            <Input
+              id="i-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Dnyanpeeth Classes"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="i-phone">Contact phone</Label>
-            <Input id="i-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" />
+            <Input
+              id="i-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="+91 98765 43210"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="i-address">Address</Label>
-            <Input id="i-address" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="FC Road, Pune" />
+            <Input
+              id="i-address"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="FC Road, Pune"
+            />
           </div>
         </div>
         <div className="mt-6 flex gap-2">
@@ -180,7 +257,9 @@ function CreateInstituteScreen() {
             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Create institute
           </Button>
-          <Button variant="ghost" onClick={onSignOut}>Sign out</Button>
+          <Button variant="ghost" onClick={onSignOut}>
+            Sign out
+          </Button>
         </div>
       </div>
     </div>
@@ -190,7 +269,10 @@ function CreateInstituteScreen() {
 function GoogleIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
-      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.9 3.5 14.7 2.5 12 2.5 6.8 2.5 2.6 6.7 2.6 12s4.2 9.5 9.4 9.5c5.4 0 9-3.8 9-9.2 0-.6-.1-1.1-.2-1.6H12z"/>
+      <path
+        fill="#EA4335"
+        d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.7-6-6.1s2.7-6.1 6-6.1c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.9 3.5 14.7 2.5 12 2.5 6.8 2.5 2.6 6.7 2.6 12s4.2 9.5 9.4 9.5c5.4 0 9-3.8 9-9.2 0-.6-.1-1.1-.2-1.6H12z"
+      />
     </svg>
   );
 }
