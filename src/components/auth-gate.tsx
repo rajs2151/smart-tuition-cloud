@@ -1,5 +1,4 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { lovable } from "@/integrations/lovable/index";
 import { supabase } from "@/integrations/supabase/client";
 import { initAuth, refreshMembership, useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
@@ -126,16 +125,25 @@ function SignInScreen() {
   const onSignIn = async () => {
     setBusy(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+      // Supabase's own hosted OAuth flow (Authentication → Providers → Google
+      // in the Supabase dashboard) instead of the Lovable Cloud OAuth broker.
+      // The broker relies on the hosting platform intercepting /~oauth/*
+      // requests at the edge before they reach the app — that only exists
+      // on Lovable Cloud's own infrastructure. On any other host (e.g.
+      // Vercel), that path just 404s in the app itself, which is why
+      // sign-in was completely broken there. signInWithOAuth() redirects
+      // straight to Supabase's own /auth/v1/authorize endpoint, so it
+      // works identically regardless of where the app is deployed.
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin },
       });
-      if (result.error) {
-        toast.error(result.error.message ?? "Sign-in failed");
+      if (error) {
+        toast.error(error.message ?? "Sign-in failed");
         setBusy(false);
         return;
       }
-      if (result.redirected) return;
-      // session set — auth state listener will pick it up
+      // Success redirects the browser away immediately; nothing more to do.
     } catch (e) {
       toast.error((e as Error).message);
       setBusy(false);
