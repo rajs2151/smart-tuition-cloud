@@ -81,14 +81,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Vidyafee — Fee Management SaaS for Coaching Institutes" },
+      { title: "Dashboard — Vidyafee" },
       {
         name: "description",
         content:
           "All-in-one fee management, student records, receipts and analytics for coaching classes, tuition centers and training institutes.",
       },
       { name: "author", content: "Vidyafee" },
-      { property: "og:title", content: "Vidyafee — Fee Management SaaS" },
+      { property: "og:title", content: "Dashboard — Vidyafee" },
       {
         property: "og:description",
         content:
@@ -96,6 +96,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
+      { name: "twitter:title", content: "Dashboard — Vidyafee" },
+      { name: "description", content: "Live overview of collections, dues and admissions for your institute." },
+      { property: "og:description", content: "Live overview of collections, dues and admissions for your institute." },
+      { name: "twitter:description", content: "Live overview of collections, dues and admissions for your institute." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/42a41d81-b090-4818-9210-08900986a544/id-preview-a900bb4e--4e8c6234-1ca1-4b7c-b006-4ffd19eae1c3.lovable.app-1783350333028.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/42a41d81-b090-4818-9210-08900986a544/id-preview-a900bb4e--4e8c6234-1ca1-4b7c-b006-4ffd19eae1c3.lovable.app-1783350333028.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
