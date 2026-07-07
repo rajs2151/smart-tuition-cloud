@@ -292,10 +292,12 @@ export async function purgeBatch(id: string) {
 // ============ Payments ============
 
 export async function listPayments(includeDeleted = false): Promise<Payment[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
   const q = supabase
     .from("payments")
     .select("*")
-    .eq("institute_id", activeInstituteId())
+    .eq("institute_id", instId)
     .order("date", { ascending: false });
   const { data, error } = includeDeleted ? await q : await q.eq("deleted", false);
   if (error) throw error;
