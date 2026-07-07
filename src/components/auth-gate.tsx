@@ -25,7 +25,37 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (session.status === "signed-out") return <SignInScreen />;
   if (session.status === "no-institute") return <CreateInstituteScreen />;
+  if (session.status === "expired") return <SubscriptionStatusScreen kind="expired" />;
+  if (session.status === "blocked") return <SubscriptionStatusScreen kind="blocked" />;
   return <>{children}</>;
+}
+
+function SubscriptionStatusScreen({ kind }: { kind: "expired" | "blocked" }) {
+  const session = useSession();
+  const onSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+  const title = kind === "expired" ? "Subscription Expired" : "Access Blocked";
+  const message =
+    kind === "expired"
+      ? "Your Vidyafee subscription has ended. Please contact the administrator to renew your subscription and restore access to your institute."
+      : "Access to this institute has been disabled. Please contact the administrator for assistance.";
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-background px-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+        <h1 className="font-heading text-2xl font-bold text-foreground">{title}</h1>
+        <p className="mt-3 text-sm text-muted-foreground">{message}</p>
+        {session.email ? (
+          <p className="mt-4 text-xs text-muted-foreground">Signed in as {session.email}</p>
+        ) : null}
+        <div className="mt-6">
+          <Button variant="outline" onClick={onSignOut} className="w-full">
+            Sign out
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SignInScreen() {
