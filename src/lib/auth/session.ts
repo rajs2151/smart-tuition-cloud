@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { hydrateSettingsFromDb, resetSettings } from "@/lib/settings/store";
 
 export type SessionState = {
-  status: "loading" | "signed-out" | "no-institute" | "ready";
+  status: "loading" | "signed-out" | "no-institute" | "ready" | "expired" | "blocked";
   userId: string | null;
   email: string | null;
   instituteId: string | null;
