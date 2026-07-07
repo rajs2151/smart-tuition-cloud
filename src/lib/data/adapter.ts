@@ -226,10 +226,12 @@ export async function purgeStudent(id: string) {
 // ============ Batches ============
 
 export async function listBatches(includeDeleted = false): Promise<Batch[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
   const q = supabase
     .from("batches")
     .select("*")
-    .eq("institute_id", activeInstituteId())
+    .eq("institute_id", instId)
     .order("created_at", { ascending: false });
   const { data, error } = includeDeleted ? await q : await q.eq("deleted", false);
   if (error) throw error;
