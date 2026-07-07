@@ -71,6 +71,22 @@ async function loadActiveInstitute(userId: string) {
     return;
   }
   hydrateSettingsFromDb(inst);
+  const rawStatus = (inst as { subscription_status?: string }).subscription_status ?? "trial";
+  let subStatus: "trial" | "active" | "expired" | "blocked";
+  if (rawStatus === "trial" || rawStatus === "active" || rawStatus === "expired" || rawStatus === "blocked") {
+    subStatus = rawStatus;
+  } else {
+    console.error("[session] unexpected subscription_status; treating as blocked:", rawStatus);
+    subStatus = "blocked";
+  }
+  if (subStatus === "expired") {
+    set({ status: "expired", instituteId, role: owner.role as "owner" | "staff" });
+    return;
+  }
+  if (subStatus === "blocked") {
+    set({ status: "blocked", instituteId, role: owner.role as "owner" | "staff" });
+    return;
+  }
   set({
     status: "ready",
     instituteId,
