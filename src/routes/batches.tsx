@@ -162,23 +162,38 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
         },
   );
 
-  const submit = async () => {
-    if (!form.name) return toast.error("Batch name is required");
+  const [importFor, setImportFor] = useState<Batch | null>(null);
+
+  const persist = async (): Promise<Batch | null> => {
+    if (!form.name) { toast.error("Batch name is required"); return null; }
     if (form.type === "standard" && (!form.standard || !form.board || !form.medium)) {
-      return toast.error("Pick standard, board and medium");
+      toast.error("Pick standard, board and medium"); return null;
     }
     if (form.type === "exam" && !form.examCategory) {
-      return toast.error("Pick an exam category");
+      toast.error("Pick an exam category"); return null;
     }
     if (isEdit && batch) {
-      await updateBatch(batch.id, form);
+      const updated = await updateBatch(batch.id, form);
       toast.success("Batch updated");
-    } else {
-      await createBatch(form);
-      toast.success("Batch created");
+      await qc.invalidateQueries();
+      return updated;
     }
+    const created = await createBatch(form);
+    toast.success("Batch created");
     await qc.invalidateQueries();
+    return created;
+  };
+
+  const submit = async () => {
+    const b = await persist();
+    if (b) setOpen(false);
+  };
+
+  const submitAndImport = async () => {
+    const b = await persist();
+    if (!b) return;
     setOpen(false);
+    setImportFor(b);
   };
 
   return (
