@@ -271,12 +271,34 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="secondary" onClick={submitAndImport}>
+            <Upload className="h-4 w-4" /> Import students
+          </Button>
           <Button onClick={submit}>{isEdit ? "Update batch" : "Create batch"}</Button>
         </DialogFooter>
       </DialogContent>
+      {importFor ? (
+        <ImportStudentsDialog
+          batch={importFor}
+          open={!!importFor}
+          onOpenChange={(v) => { if (!v) setImportFor(null); }}
+        />
+      ) : null}
     </Dialog>
+  );
+}
+
+function ImportButton({ batch }: { batch: Batch }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button size="icon" variant="ghost" onClick={() => setOpen(true)} title="Import students">
+        <Upload className="h-3.5 w-3.5" />
+      </Button>
+      {open ? <ImportStudentsDialog batch={batch} open={open} onOpenChange={setOpen} /> : null}
+    </>
   );
 }
 
