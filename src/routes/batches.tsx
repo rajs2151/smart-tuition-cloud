@@ -25,6 +25,8 @@ import {
 import { useSettings } from "@/lib/settings/store";
 import { inr, fmtDate } from "@/lib/format";
 import type { Batch, BatchType, Standard, Board, Medium, ExamCategory } from "@/lib/data/types";
+import { ImportStudentsDialog } from "@/components/import-students-dialog";
+import { Upload } from "lucide-react";
 
 const q = {
   queryKey: ["batches-page"],
@@ -107,6 +109,7 @@ function BatchesPage() {
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{b.startDate ? fmtDate(b.startDate) : "—"} → {b.endDate ? fmtDate(b.endDate) : "—"}</span>
                       <div className="flex gap-1">
+                        <ImportButton batch={b} />
                         <BatchDialog batch={b} trigger={<Button size="icon" variant="ghost"><Pencil className="h-3.5 w-3.5" /></Button>} />
                         <DeleteBatchButton id={b.id} />
                       </div>
@@ -159,23 +162,38 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
         },
   );
 
-  const submit = async () => {
-    if (!form.name) return toast.error("Batch name is required");
+  const [importFor, setImportFor] = useState<Batch | null>(null);
+
+  const persist = async (): Promise<Batch | null> => {
+    if (!form.name) { toast.error("Batch name is required"); return null; }
     if (form.type === "standard" && (!form.standard || !form.board || !form.medium)) {
-      return toast.error("Pick standard, board and medium");
+      toast.error("Pick standard, board and medium"); return null;
     }
     if (form.type === "exam" && !form.examCategory) {
-      return toast.error("Pick an exam category");
+      toast.error("Pick an exam category"); return null;
     }
     if (isEdit && batch) {
-      await updateBatch(batch.id, form);
+      const updated = await updateBatch(batch.id, form);
       toast.success("Batch updated");
-    } else {
-      await createBatch(form);
-      toast.success("Batch created");
+      await qc.invalidateQueries();
+      return updated;
     }
+    const created = await createBatch(form);
+    toast.success("Batch created");
     await qc.invalidateQueries();
+    return created;
+  };
+
+  const submit = async () => {
+    const b = await persist();
+    if (b) setOpen(false);
+  };
+
+  const submitAndImport = async () => {
+    const b = await persist();
+    if (!b) return;
     setOpen(false);
+    setImportFor(b);
   };
 
   return (
@@ -253,12 +271,34 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="secondary" onClick={submitAndImport}>
+            <Upload className="h-4 w-4" /> Import students
+          </Button>
           <Button onClick={submit}>{isEdit ? "Update batch" : "Create batch"}</Button>
         </DialogFooter>
       </DialogContent>
+      {importFor ? (
+        <ImportStudentsDialog
+          batch={importFor}
+          open={!!importFor}
+          onOpenChange={(v) => { if (!v) setImportFor(null); }}
+        />
+      ) : null}
     </Dialog>
+  );
+}
+
+function ImportButton({ batch }: { batch: Batch }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button size="icon" variant="ghost" onClick={() => setOpen(true)} title="Import students">
+        <Upload className="h-3.5 w-3.5" />
+      </Button>
+      {open ? <ImportStudentsDialog batch={batch} open={open} onOpenChange={setOpen} /> : null}
+    </>
   );
 }
 

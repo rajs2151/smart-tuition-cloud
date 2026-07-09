@@ -74,7 +74,7 @@ async function loadActiveInstitute(userId: string) {
 
   const { data: memberships, error } = await supabase
     .from("institute_members")
-    .select("institute_id, role, access_enabled")
+    .select("institute_id, role")
     .eq("user_id", userId)
     .order("created_at", { ascending: true });
 
@@ -82,10 +82,6 @@ async function loadActiveInstitute(userId: string) {
 
   if (error) {
     console.error("[session] memberships error", error);
-    // A failed query must NOT be treated as "no membership" — that would
-    // incorrectly send an existing, fully-onboarded user back to the
-    // "Create Your Institute" screen because of a transient network or
-    // RLS error. Surface a distinct, recoverable error state instead.
     set({ status: "error", errorMessage: "Couldn't load your account. Please try again." });
     return;
   }
@@ -99,14 +95,6 @@ async function loadActiveInstitute(userId: string) {
   // first (oldest) membership. Deterministic regardless of row order.
   const membership = memberships.find((m) => m.role === "owner") ?? memberships[0];
 
-  if (!membership.access_enabled) {
-    set({
-      status: "disabled",
-      instituteId: membership.institute_id,
-      role: membership.role as "owner" | "staff",
-    });
-    return;
-  }
 
   const { data: inst, error: instErr } = await supabase
     .from("institutes")
