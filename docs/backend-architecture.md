@@ -61,7 +61,7 @@ TanStack Start's SSR is used only for rendering pages and one static route
 | `src/integrations/supabase/auth-middleware.ts` | A TanStack Start server-function middleware (`requireSupabaseAuth`) that validates a bearer token server-side. Defined but **not currently attached to any server function**, because the app has no server functions yet. |
 | `src/integrations/supabase/auth-attacher.ts` | A TanStack Start client-side middleware (`attachSupabaseAuth`) that would attach the browser's access token to any server-function call. Registered globally in `src/start.ts`, but has nothing to attach to yet (no server functions exist). |
 | `src/integrations/supabase/types.ts` | Generated TypeScript types for every table/RPC (kept in sync with the schema in `supabase/migrations/`). |
-| `supabase/config.toml` | Contains only the Supabase **project ID** (`fqusjrsboyinbrblauma`) — this is how the Supabase CLI knows which cloud project a local `supabase db push` etc. targets. |
+| `supabase/config.toml` | Contains only the Supabase **project ID** (`xrkfbsupszhsjevcmntc`) — this is how the Supabase CLI knows which cloud project a local `supabase db push` etc. targets. |
 | `supabase/migrations/*.sql` | The entire database schema, as version-controlled SQL migrations (see [§5](#5-database-schema)). |
 | `.env` (repo root) | **⚠️ See security note below.** |
 
@@ -281,9 +281,9 @@ rows.
 
 | Function | Type | What it does |
 |---|---|---|
-| `is_member(_institute, _user)` | `SECURITY DEFINER`, internal helper | Returns whether a user belongs to an institute. Used inside RLS policies. |
-| `is_owner(_institute, _user)` | `SECURITY DEFINER`, internal helper | Returns whether a user is the `owner` of an institute. Used inside RLS policies. |
-| `next_receipt_number(_institute)` | `SECURITY DEFINER`, callable RPC | Atomically increments and returns the next formatted receipt number for an institute (e.g. `REC-1002`). Called from `src/lib/data/adapter.ts` when recording a payment. |
+| `is_member(_institute, _user)` | `SECURITY DEFINER`, internal helper | Returns whether a user belongs to an institute. Used inside RLS policies. **⚠️ Was broken from migration 2 (`revoke_public_execute_on_helpers`) until the [Supabase project cutover](../CUTOVER.md):** that migration revoked `EXECUTE` on this function from `authenticated` and nothing ever re-granted it, so every RLS-protected query for a real signed-in user failed with `permission denied for function is_member` — this was confirmed by directly simulating an authenticated request and has since been fixed by migration `20260709055109_fix_authenticated_execute_grants.sql`. |
+| `is_owner(_institute, _user)` | `SECURITY DEFINER`, internal helper | Returns whether a user is the `owner` of an institute. Used inside RLS policies. Same missing-grant bug as `is_member` above, fixed by the same migration. |
+| `next_receipt_number(_institute)` | `SECURITY DEFINER`, callable RPC | Atomically increments and returns the next formatted receipt number for an institute (e.g. `REC-1002`). Called from `src/lib/data/adapter.ts` when recording a payment. Was over-permissively granted to `PUBLIC`/`anon` (flagged by Supabase's security advisor); tightened to `authenticated`-only by the same migration. |
 | `create_institute_with_owner(_name, _phone, _address, _email)` | `SECURITY DEFINER`, callable RPC | **Added in the latest fix.** Atomically creates an `institutes` row and its owner `institute_members` row in a single transaction; idempotent (returns the existing institute if the caller already owns one). Called from `CreateInstituteScreen` in `auth-gate.tsx` instead of a client-side check-then-insert, to eliminate a duplicate-institute race condition. |
 
 ### Triggers
@@ -416,20 +416,25 @@ confirm which output target is actually being produced.
 ### Where the Supabase project URL comes from
 
 The Supabase project URL (`https://<project-ref>.supabase.co`) is stored as
-the `SUPABASE_URL` / `VITE_SUPABASE_URL` environment variable. In this repo,
-a value is already present in the committed `.env` file (see the security
-note in [§2](#2-supabase-configuration)).
+the `SUPABASE_URL` / `VITE_SUPABASE_URL` environment variable. As of the
+[Supabase project cutover](../CUTOVER.md), this is a direct Supabase URL
+(`https://xrkfbsupszhsjevcmntc.supabase.co`). **Correction to an earlier
+version of this doc:** before the cutover, `SUPABASE_URL` was not actually a
+`*.supabase.co` URL at all — it was a Lovable Cloud proxy domain
+(`https://c--<uuid>-prod.lovable.cloud`), which only became apparent once the
+real value was inspected directly rather than assumed from the variable name.
+The app now talks to Supabase directly, with no proxy layer in between.
 
 ### How to find the project ID
 
 The project ref/ID is stored in `supabase/config.toml` at the repo root:
 
 ```toml
-project_id = "fqusjrsboyinbrblauma"
+project_id = "xrkfbsupszhsjevcmntc"
 ```
 
 This is also embedded in the Supabase URL itself
-(`https://fqusjrsboyinbrblauma.supabase.co`).
+(`https://xrkfbsupszhsjevcmntc.supabase.co`).
 
 ### How to open the Supabase dashboard
 
@@ -437,7 +442,7 @@ This is also embedded in the Supabase URL itself
 2. Sign in with the account that owns this project (**this repository does
    not grant Supabase dashboard access by itself** — see below).
 3. Select the project matching the ID above, or open it directly at
-   `https://supabase.com/dashboard/project/fqusjrsboyinbrblauma`.
+   `https://supabase.com/dashboard/project/xrkfbsupszhsjevcmntc`.
 
 ### Which environment variables are required to run this project
 
@@ -474,7 +479,7 @@ GitHub access does **not** give you:
    pull fresh ones from the Supabase dashboard's **Settings → API** page),
    run `npm install && npm run dev`.
 4. **Applying schema changes locally**: install the Supabase CLI, run
-   `supabase link --project-ref fqusjrsboyinbrblauma`, then
+   `supabase link --project-ref xrkfbsupszhsjevcmntc`, then
    `supabase db push` to apply any new files added to
    `supabase/migrations/`.
 5. **Deployment access** (Vercel): be added as a member of the Vercel
