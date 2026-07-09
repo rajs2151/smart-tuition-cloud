@@ -25,6 +25,8 @@ import {
 import { useSettings } from "@/lib/settings/store";
 import { inr, fmtDate } from "@/lib/format";
 import type { Batch, BatchType, Standard, Board, Medium, ExamCategory } from "@/lib/data/types";
+import { ImportStudentsDialog } from "@/components/import-students-dialog";
+import { Upload } from "lucide-react";
 
 const q = {
   queryKey: ["batches-page"],
