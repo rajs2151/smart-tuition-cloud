@@ -109,6 +109,7 @@ function BatchesPage() {
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>{b.startDate ? fmtDate(b.startDate) : "—"} → {b.endDate ? fmtDate(b.endDate) : "—"}</span>
                       <div className="flex gap-1">
+                        <ImportButton batch={b} />
                         <BatchDialog batch={b} trigger={<Button size="icon" variant="ghost"><Pencil className="h-3.5 w-3.5" /></Button>} />
                         <DeleteBatchButton id={b.id} />
                       </div>
