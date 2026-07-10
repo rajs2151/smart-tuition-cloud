@@ -249,7 +249,7 @@ function CreateInstituteScreen() {
       // create their own institute. The RPC is idempotent (safe to call
       // again) and a unique index in the database is the final backstop
       // against duplicate/orphan institute records even under concurrency.
-      const { error } = await (supabase.rpc as unknown as (fn: string, args: Record<string, unknown>) => Promise<{ error: { code?: string; message: string } | null }>)("create_institute_with_owner", {
+      const { error } = await supabase.rpc("create_institute_with_owner", {
         _name: name.trim(),
         _phone: phone.trim(),
         _address: address.trim(),

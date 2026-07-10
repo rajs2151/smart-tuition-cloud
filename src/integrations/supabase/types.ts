@@ -140,6 +140,7 @@ export type Database = {
       }
       institute_members: {
         Row: {
+          access_enabled: boolean
           created_at: string
           id: string
           institute_id: string
@@ -147,6 +148,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          access_enabled?: boolean
           created_at?: string
           id?: string
           institute_id: string
@@ -154,6 +156,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          access_enabled?: boolean
           created_at?: string
           id?: string
           institute_id?: string
@@ -503,6 +506,10 @@ export type Database = {
         Returns: boolean
       }
       next_receipt_number: { Args: { _institute: string }; Returns: string }
+      create_institute_with_owner: {
+        Args: { _name: string; _phone: string; _address: string; _email: string }
+        Returns: Database["public"]["Tables"]["institutes"]["Row"]
+      }
     }
     Enums: {
       member_role: "owner" | "staff"
