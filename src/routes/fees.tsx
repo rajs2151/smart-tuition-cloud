@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Search, IndianRupee, MessageCircle, Receipt as ReceiptIcon } from "lucide-react";
+import { Plus, Search, IndianRupee, MessageCircle } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,7 @@ import { fmtDate, initials, inr } from "@/lib/format";
 import type { Payment } from "@/lib/data/types";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { getMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
+import { PaymentRowMenu } from "@/components/payment-row-menu";
 
 const q = {
   queryKey: ["fees-page"],
@@ -73,7 +74,7 @@ function FeesPage() {
     const billed = data.students.reduce((a, s) => a + (s.totalFee - s.discount), 0);
     const collected = data.students.reduce((a, s) => a + s.paidFee, 0);
     const today = new Date().toISOString().slice(0, 10);
-    const todayCol = data.payments.filter((p) => p.date === today).reduce((a, p) => a + p.amount, 0);
+    const todayCol = data.payments.filter((p) => p.date === today && !p.voided).reduce((a, p) => a + p.amount, 0);
     return { billed, collected, due: billed - collected, todayCol };
   }, [data]);
 
@@ -177,44 +178,22 @@ function FeesPage() {
           <CardContent className="space-y-1">
             {data.payments.slice(0, 8).map((p) => {
               const st = data.students.find((s) => s.id === p.studentId);
-              const sendAck = (e: React.MouseEvent) => {
-                e.preventDefault();
-                if (!st) return;
-                const { templates, defaults } = getMessaging();
-                const billed = st.totalFee - st.discount;
-                const pending = Math.max(0, billed - st.paidFee);
-                const subType = pending === 0 ? "full" : p.type === "admission" ? "admission" : "partial";
-                const tpl =
-                  templates.find((t) => t.id === defaults.acknowledgement) ??
-                  templates.find((t) => t.category === "acknowledgement" && t.subType === subType) ??
-                  templates.find((t) => t.category === "acknowledgement");
-                const mobile = pickMobile(st);
-                if (!mobile) return toast.error("No mobile on file");
-                if (!tpl) return toast.error("Configure an acknowledgement template in Settings");
-                const msg = renderMessage(tpl, buildContext({ student: st, payment: p, pending }));
-                openWhatsApp(mobile, msg);
-                logComm({ studentId: st.id, studentName: st.name, mobile, templateId: tpl.id, templateName: tpl.name, category: "acknowledgement", message: msg, sentBy: "owner" });
-                markLogPaid(st.id);
-                toast.success("Acknowledgement opened");
-              };
               return (
                 <div
                   key={p.id}
-                  className="flex items-center justify-between rounded-lg px-3 py-2 hover:bg-accent/50"
+                  className={`flex items-center justify-between rounded-lg px-3 py-2 hover:bg-accent/50 ${p.voided ? "opacity-60" : ""}`}
                 >
                   <Link to="/receipts/$id" params={{ id: p.id }} className="flex-1">
                     <p className="text-sm font-medium">{st?.name}</p>
                     <p className="text-xs text-muted-foreground">{p.receiptNo} · {fmtDate(p.date)}</p>
                   </Link>
                   <div className="flex items-center gap-3">
+                    {p.voided && <Badge variant="destructive">Voided</Badge>}
                     <Badge variant="secondary">{p.mode}</Badge>
-                    <span className="font-display font-bold text-success">+{inr(p.amount)}</span>
-                    <Button size="sm" variant="outline" onClick={sendAck} className="h-7 gap-1 px-2 text-xs" title="WhatsApp acknowledgement">
-                      <MessageCircle className="h-3.5 w-3.5" /> Ack
-                    </Button>
-                    <Link to="/receipts/$id" params={{ id: p.id }}>
-                      <ReceiptIcon className="h-4 w-4 text-muted-foreground" />
-                    </Link>
+                    <span className={`font-display font-bold ${p.voided ? "text-muted-foreground line-through" : "text-success"}`}>
+                      +{inr(p.amount)}
+                    </span>
+                    <PaymentRowMenu payment={p} student={st} />
                   </div>
                 </div>
               );

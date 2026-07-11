@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Search, Filter, Phone } from "lucide-react";
@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AddStudentDialog } from "@/components/add-student-dialog";
+import { StudentRowMenu } from "@/components/student-row-menu";
 
 import { listBatches, listStudents } from "@/lib/data/adapter";
 import { initials, inr } from "@/lib/format";
@@ -36,6 +37,7 @@ export const Route = createFileRoute("/students/")({
 
 function StudentsPage() {
   const { data } = useSuspenseQuery(q);
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [batch, setBatch] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
@@ -109,9 +111,10 @@ function StudentsPage() {
           <div className="hidden md:grid grid-cols-12 gap-3 border-b px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             <div className="col-span-4">Student</div>
             <div className="col-span-2">Batch</div>
-            <div className="col-span-3">Fee progress</div>
+            <div className="col-span-2">Fee progress</div>
             <div className="col-span-2 text-right">Due</div>
-            <div className="col-span-1 text-right">Action</div>
+            <div className="col-span-1 text-right">Status</div>
+            <div className="col-span-1 text-right">Actions</div>
           </div>
           <div className="divide-y">
             {filtered.map((s) => {
@@ -120,11 +123,10 @@ function StudentsPage() {
               const pct = Math.round((s.paidFee / Math.max(1, billed)) * 100);
               const batchName = data.batches.find((b) => b.id === s.batchId)?.name ?? s.course;
               return (
-                <Link
+                <div
                   key={s.id}
-                  to="/students/$id"
-                  params={{ id: s.id }}
-                  className="grid grid-cols-12 items-center gap-3 px-5 py-3 transition hover:bg-accent/40"
+                  onClick={() => navigate({ to: "/students/$id", params: { id: s.id } })}
+                  className="grid cursor-pointer grid-cols-12 items-center gap-3 px-5 py-3 transition hover:bg-accent/40"
                 >
                   <div className="col-span-12 md:col-span-4 flex items-center gap-3 min-w-0">
                     <Avatar className="h-10 w-10">
@@ -142,7 +144,7 @@ function StudentsPage() {
                   <div className="col-span-6 md:col-span-2">
                     <Badge variant="secondary" className="font-normal">{batchName}</Badge>
                   </div>
-                  <div className="col-span-12 md:col-span-3">
+                  <div className="col-span-12 md:col-span-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">{inr(s.paidFee)} / {inr(billed)}</span>
                       <span className="font-semibold">{pct}%</span>
@@ -154,10 +156,13 @@ function StudentsPage() {
                       {due > 0 ? inr(due) : "Cleared"}
                     </span>
                   </div>
-                  <div className="col-span-12 md:col-span-1 md:text-right">
+                  <div className="col-span-6 md:col-span-1 md:text-right">
                     <Badge variant="outline" className="text-[10px]">{s.status}</Badge>
                   </div>
-                </Link>
+                  <div className="col-span-12 md:col-span-1 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                    <StudentRowMenu student={s} />
+                  </div>
+                </div>
               );
             })}
             {filtered.length === 0 && (

@@ -85,6 +85,7 @@ function toStudent(r: any): Student {
     email: r.email ?? undefined,
     address: r.address ?? undefined,
     photo: r.photo ?? undefined,
+    dob: r.date_of_birth ?? undefined,
     batchId: r.batch_id ?? "",
     standard: r.standard ?? undefined,
     board: r.board ?? undefined,
@@ -114,6 +115,7 @@ function fromStudent(s: Partial<Student>): any {
   if (s.email !== undefined) row.email = s.email;
   if (s.address !== undefined) row.address = s.address;
   if (s.photo !== undefined) row.photo = s.photo;
+  if (s.dob !== undefined) row.date_of_birth = s.dob || null;
   if (s.batchId !== undefined) row.batch_id = s.batchId || null;
   if (s.standard !== undefined) row.standard = s.standard;
   if (s.board !== undefined) row.board = s.board;
@@ -146,6 +148,9 @@ function toPayment(r: any): Payment {
     deleted: !!r.deleted,
     deletedAt: r.deleted_at ?? undefined,
     deletedBy: r.deleted_by ?? undefined,
+    voided: !!r.voided,
+    voidedAt: r.voided_at ?? undefined,
+    voidedBy: r.voided_by ?? undefined,
   };
 }
 
@@ -180,6 +185,7 @@ export async function createStudent(s: Omit<Student, "id" | "instituteId">): Pro
 }
 
 export async function updateStudent(id: string, patch: Partial<Student>) {
+  const { data: before } = await supabase.from("students").select("*").eq("id", id).maybeSingle();
   const { data, error } = await supabase
     .from("students")
     .update(fromStudent(patch))
@@ -188,7 +194,15 @@ export async function updateStudent(id: string, patch: Partial<Student>) {
     .single();
   if (error) throw error;
   const st = toStudent(data);
-  logAudit({ entity: "student", entityId: id, action: "update", by: currentUser(), summary: `Updated ${st.name}` });
+  logAudit({
+    entity: "student",
+    entityId: id,
+    action: "update",
+    by: currentUser(),
+    summary: `Updated ${st.name}`,
+    oldValue: before ? toStudent(before) : undefined,
+    newValue: st,
+  });
   return st;
 }
 
@@ -202,7 +216,7 @@ export async function deleteStudent(id: string) {
     .single();
   if (error) throw error;
   addRecycle({ entity: "student", entityId: id, label: data.name, deletedAt: now, deletedBy: currentUser() });
-  logAudit({ entity: "student", entityId: id, action: "delete", by: currentUser(), summary: `Moved ${data.name} to recycle bin` });
+  logAudit({ entity: "student", entityId: id, action: "delete", by: currentUser(), summary: `Archived ${data.name}` });
 }
 export async function restoreStudent(id: string) {
   const { data, error } = await supabase
@@ -320,7 +334,8 @@ async function reconcileStudentPaid(studentId: string) {
     .from("payments")
     .select("amount")
     .eq("student_id", studentId)
-    .eq("deleted", false);
+    .eq("deleted", false)
+    .eq("voided", false);
   if (error) throw error;
   const paid = (data ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
   await supabase.from("students").update({ paid_fee: paid }).eq("id", studentId);
@@ -356,6 +371,7 @@ export async function recordPayment(
 }
 
 export async function updatePayment(id: string, patch: Partial<Payment>) {
+  const { data: before } = await supabase.from("payments").select("*").eq("id", id).maybeSingle();
   const row: any = {};
   if (patch.amount !== undefined) row.amount = patch.amount;
   if (patch.date !== undefined) row.date = patch.date;
@@ -366,8 +382,44 @@ export async function updatePayment(id: string, patch: Partial<Payment>) {
   if (error) throw error;
   const after = toPayment(data);
   await reconcileStudentPaid(after.studentId);
-  logAudit({ entity: "payment", entityId: id, action: "update", by: currentUser(), summary: `Edited payment ${after.receiptNo}` });
+  logAudit({
+    entity: "payment",
+    entityId: id,
+    action: "update",
+    by: currentUser(),
+    summary: `Edited payment ${after.receiptNo}`,
+    oldValue: before ? { amount: before.amount, date: before.date, mode: before.mode, note: before.note } : undefined,
+    newValue: { amount: after.amount, date: after.date, mode: after.mode, note: after.note },
+  });
   return after;
+}
+
+/**
+ * Void a payment. Unlike deletePayment (soft-delete to the Recycle Bin,
+ * hidden from normal views), a voided payment stays visible and
+ * searchable in payment history — it only stops counting towards
+ * collected/outstanding totals (see reconcileStudentPaid).
+ */
+export async function voidPayment(id: string): Promise<Payment> {
+  const { data, error } = await supabase
+    .from("payments")
+    .update({ voided: true, voided_at: new Date().toISOString(), voided_by: getSession().userId })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  const p = toPayment(data);
+  await reconcileStudentPaid(p.studentId);
+  logAudit({
+    entity: "payment",
+    entityId: id,
+    action: "void",
+    by: currentUser(),
+    summary: `Voided payment ${p.receiptNo} (₹${p.amount})`,
+    oldValue: { voided: false },
+    newValue: { voided: true },
+  });
+  return p;
 }
 
 export async function deletePayment(id: string) {
