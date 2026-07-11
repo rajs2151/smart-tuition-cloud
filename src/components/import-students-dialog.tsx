@@ -37,6 +37,7 @@ type ParsedRow = {
   address?: string;
   dob?: string;
   errors: string[];
+  warnings: string[];
   duplicate: boolean;
   duplicateReason?: string;
   raw: RawRow;
@@ -50,9 +51,9 @@ type ImportResult = {
 
 // ---------- Column mapping ----------
 
-const COLUMNS: Array<{ key: keyof Omit<ParsedRow, "rowNumber" | "errors" | "duplicate" | "duplicateReason" | "raw">; label: string; required?: boolean; aliases: string[] }> = [
+const COLUMNS: Array<{ key: keyof Omit<ParsedRow, "rowNumber" | "errors" | "warnings" | "duplicate" | "duplicateReason" | "raw">; label: string; required?: boolean; aliases: string[] }> = [
   { key: "name", label: "Student Name", required: true, aliases: ["student name", "name", "student"] },
-  { key: "phone", label: "Mobile Number", required: true, aliases: ["mobile number", "mobile", "phone", "student mobile", "student phone", "contact"] },
+  { key: "phone", label: "Mobile Number", aliases: ["mobile number", "mobile", "phone", "student mobile", "student phone", "contact"] },
   { key: "parentName", label: "Parent Name", aliases: ["parent name", "guardian", "father name", "guardian name"] },
   { key: "parentPhone", label: "Parent Mobile", aliases: ["parent mobile", "parent phone", "guardian mobile", "father mobile"] },
   { key: "rollNo", label: "Roll Number", aliases: ["roll number", "roll no", "roll", "rollno"] },
@@ -71,13 +72,27 @@ function normalizeHeader(h: string): string {
   return String(h ?? "").trim().toLowerCase().replace(/[\s_]+/g, " ");
 }
 
+/**
+ * Normalizes a user-entered mobile number into a bare 10-digit string.
+ * Accepts formats like:
+ *   9876543210 | 98765 43210 | 98765-43210 | (98765) 43210
+ *   +919876543210 | 919876543210
+ * Strategy: strip everything except digits and a leading "+", drop the "+",
+ * then strip a leading "91" country code only when doing so leaves exactly
+ * 10 digits (so we don't mangle a genuine 10-digit number that happens to
+ * start with "91").
+ */
 function normalizePhone(v: unknown): string {
-  const s = String(v ?? "").replace(/\D+/g, "");
-  return s;
+  let digits = String(v ?? "").trim().replace(/[^\d+]/g, "");
+  digits = digits.replace(/\+/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) {
+    digits = digits.slice(2);
+  }
+  return digits;
 }
 
 function isValidPhone(p: string): boolean {
-  return /^[6-9]\d{9}$/.test(p) || (p.length >= 10 && p.length <= 15);
+  return /^[6-9]\d{9}$/.test(p);
 }
 
 // ---------- Parsing ----------
@@ -113,6 +128,7 @@ function mapRow(raw: RawRow, rowNumber: number): ParsedRow {
     address: pick(COLUMNS[6].aliases) || undefined,
     dob: pick(COLUMNS[7].aliases) || undefined,
     errors: [],
+    warnings: [],
     duplicate: false,
     raw,
   };
@@ -120,11 +136,18 @@ function mapRow(raw: RawRow, rowNumber: number): ParsedRow {
 }
 
 function validateRow(r: ParsedRow) {
+  // Student Name is the only required field.
   if (!r.name) r.errors.push("Missing Student Name");
-  if (!r.phone) r.errors.push("Missing Mobile Number");
+
+  // Mobile Number remains optional. If missing, warn only (still importable).
+  // If present, it must normalize to a valid 10-digit number or the row is Invalid.
+  if (!r.phone) r.warnings.push("Missing Mobile Number");
   else if (!isValidPhone(r.phone)) r.errors.push("Invalid mobile number");
-  if (r.parentPhone && !isValidPhone(r.parentPhone)) r.errors.push("Invalid parent mobile");
-  if (r.email && !/^\S+@\S+\.\S+$/.test(r.email)) r.errors.push("Invalid email");
+
+  // Parent mobile is optional too — an unparseable value is a warning, not a blocker.
+  if (r.parentPhone && !isValidPhone(r.parentPhone)) r.warnings.push("Invalid parent mobile");
+
+  if (r.email && !/^\S+@\S+\.\S+$/.test(r.email)) r.warnings.push("Invalid email");
 }
 
 // ---------- Component ----------
@@ -187,30 +210,51 @@ export function ImportStudentsDialog({
       const parsed = raw.map((r, i) => mapRow(r, i + 2)); // +2 for header row and 1-based
       parsed.forEach(validateRow);
 
-      // Duplicate detection: check against existing DB students + within file.
-      const existing = await listStudents();
-      const phones = new Set(existing.map((s) => normalizePhone(s.phone)).filter(Boolean));
-      const parentPhones = new Set(existing.map((s) => normalizePhone(s.parentPhone ?? "")).filter(Boolean));
+      // Duplicate Roll Number detection (within the uploaded file only).
+      // Non-blocking: rows are flagged with a warning but still imported.
+      const rollCounts = new Map<string, number>();
+      for (const r of parsed) {
+        if (r.rollNo) rollCounts.set(r.rollNo, (rollCounts.get(r.rollNo) ?? 0) + 1);
+      }
+      for (const r of parsed) {
+        if (r.rollNo && (rollCounts.get(r.rollNo) ?? 0) > 1) {
+          r.warnings.push("Duplicate Roll Number");
+        }
+      }
 
-      const seenPhones = new Set<string>();
-      const seenParent = new Set<string>();
+      // Duplicate student detection: check against existing DB students + within the file.
+      // Identity priority: Student Mobile first, falling back to Parent Mobile only
+      // when Student Mobile is missing/invalid.
+      const identifierOf = (phone?: string, parentPhone?: string): string => {
+        if (phone && isValidPhone(phone)) return phone;
+        if (parentPhone && isValidPhone(parentPhone)) return parentPhone;
+        return "";
+      };
+
+      const existing = await listStudents();
+      const existingIdentifiers = new Set(
+        existing
+          .map((s) => identifierOf(normalizePhone(s.phone), normalizePhone(s.parentPhone ?? "")))
+          .filter(Boolean),
+      );
+
+      const seenIdentifiers = new Set<string>();
 
       for (const r of parsed) {
-        if (r.phone && phones.has(r.phone)) {
+        const identifier = identifierOf(r.phone, r.parentPhone);
+        if (!identifier) continue;
+
+        const usedParentAsIdentifier = !(r.phone && isValidPhone(r.phone));
+
+        if (existingIdentifiers.has(identifier)) {
           r.duplicate = true;
-          r.duplicateReason = "Mobile already exists";
-        } else if (r.phone && seenPhones.has(r.phone)) {
+          r.duplicateReason = usedParentAsIdentifier ? "Parent mobile already exists" : "Mobile already exists";
+        } else if (seenIdentifiers.has(identifier)) {
           r.duplicate = true;
-          r.duplicateReason = "Duplicate mobile in file";
-        } else if (r.parentPhone && parentPhones.has(r.parentPhone)) {
-          r.duplicate = true;
-          r.duplicateReason = "Parent mobile already exists";
-        } else if (r.parentPhone && seenParent.has(r.parentPhone)) {
-          r.duplicate = true;
-          r.duplicateReason = "Duplicate parent mobile in file";
+          r.duplicateReason = "Duplicate student in file";
+        } else {
+          seenIdentifiers.add(identifier);
         }
-        if (r.phone) seenPhones.add(r.phone);
-        if (r.parentPhone) seenParent.add(r.parentPhone);
       }
 
       setRows(parsed);
@@ -232,12 +276,17 @@ export function ImportStudentsDialog({
 
   const stats = useMemo(() => {
     const total = rows.length;
-    const duplicate = rows.filter((r) => r.duplicate && r.errors.length === 0).length;
+    // Blocking: Student Name missing, or a provided mobile that fails normalization.
     const invalid = rows.filter((r) => r.errors.length > 0).length;
-    const valid = rows.filter((r) => r.errors.length === 0 && !r.duplicate).length;
-    const missing = rows.filter((r) => r.errors.some((e) => e.startsWith("Missing"))).length;
-    const phoneErr = rows.filter((r) => r.errors.some((e) => e.toLowerCase().includes("mobile"))).length;
-    return { total, valid, duplicate, invalid, missing, phoneErr };
+    // Blocking: same student identified elsewhere (in-file or already in the DB).
+    const duplicate = rows.filter((r) => r.errors.length === 0 && r.duplicate).length;
+    // Importable rows (errors-free and not a duplicate) — warnings do not block import.
+    const ready = rows.filter((r) => r.errors.length === 0 && !r.duplicate).length;
+    // Non-blocking issues on rows that will still be imported.
+    const warnings = rows.filter((r) => r.errors.length === 0 && !r.duplicate && r.warnings.length > 0).length;
+    const missingMobile = rows.filter((r) => r.warnings.includes("Missing Mobile Number")).length;
+    const duplicateRoll = rows.filter((r) => r.warnings.includes("Duplicate Roll Number")).length;
+    return { total, ready, warnings, duplicate, invalid, missingMobile, duplicateRoll };
   }, [rows]);
 
   // ---------- Import ----------
@@ -373,16 +422,19 @@ export function ImportStudentsDialog({
               <span className="truncate text-muted-foreground">📄 {fileName}</span>
               <Button variant="ghost" size="sm" onClick={reset}><X className="h-3.5 w-3.5" /> Change file</Button>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <StatCard label="Total" value={stats.total} />
-              <StatCard label="Valid" value={stats.valid} tone="success" />
-              <StatCard label="Duplicate" value={stats.duplicate} tone="warn" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <StatCard label="Total Records" value={stats.total} />
+              <StatCard label="Ready to Import" value={stats.ready} tone="success" />
+              <StatCard label="Warnings" value={stats.warnings} tone="warn" />
+              <StatCard label="Duplicates" value={stats.duplicate} tone="warn" />
               <StatCard label="Invalid" value={stats.invalid} tone="danger" />
             </div>
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-              <Badge variant="outline">Missing fields: {stats.missing}</Badge>
-              <Badge variant="outline">Phone errors: {stats.phoneErr}</Badge>
-            </div>
+            {(stats.missingMobile > 0 || stats.duplicateRoll > 0) && (
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                {stats.missingMobile > 0 && <Badge variant="outline">Missing Mobile Number: {stats.missingMobile}</Badge>}
+                {stats.duplicateRoll > 0 && <Badge variant="outline">Duplicate Roll Number: {stats.duplicateRoll}</Badge>}
+              </div>
+            )}
 
             <ScrollArea className="h-72 rounded-md border">
               <Table>
@@ -406,9 +458,11 @@ export function ImportStudentsDialog({
                         {r.errors.length > 0 ? (
                           <Badge variant="destructive" className="text-[10px]">{r.errors.join(", ")}</Badge>
                         ) : r.duplicate ? (
-                          <Badge className="bg-warning/15 text-warning text-[10px]" variant="secondary">{r.duplicateReason}</Badge>
+                          <Badge className="bg-destructive/15 text-destructive text-[10px]" variant="secondary">{r.duplicateReason}</Badge>
+                        ) : r.warnings.length > 0 ? (
+                          <Badge className="bg-warning/15 text-warning text-[10px]" variant="secondary">{r.warnings.join(", ")}</Badge>
                         ) : (
-                          <Badge className="bg-success/15 text-success text-[10px]" variant="secondary">Valid</Badge>
+                          <Badge className="bg-success/15 text-success text-[10px]" variant="secondary">Ready</Badge>
                         )}
                       </TableCell>
                     </TableRow>
@@ -419,8 +473,8 @@ export function ImportStudentsDialog({
 
             <DialogFooter>
               <Button variant="outline" onClick={() => handleClose(false)}>Cancel</Button>
-              <Button onClick={runImport} disabled={stats.valid === 0}>
-                Import {stats.valid} student{stats.valid === 1 ? "" : "s"}
+              <Button onClick={runImport} disabled={stats.ready === 0}>
+                Import {stats.ready} student{stats.ready === 1 ? "" : "s"}
               </Button>
             </DialogFooter>
           </div>
