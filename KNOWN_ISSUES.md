@@ -32,25 +32,30 @@ actually configured, if wanted.
 ## PDF Export (Receipts / Admission Form)
 
 Status:
-Pending
+Resolved
 
-Issue:
-`src/lib/pdf/export.ts` renders a DOM element to canvas via `html2canvas`
-(`^1.4.1`) before writing it into a PDF via `jsPDF`. The app's entire theme
+Notes:
+`src/lib/pdf/export.ts` renders a DOM element to canvas via html2canvas
+before writing it into a PDF via `jsPDF`. The app's entire theme
 (`src/styles.css`) defines colors using the modern CSS `oklch()` function —
-confirmed 79 separate uses across backgrounds, text, borders, and shadows.
-`html2canvas` 1.4.1's color parser does not understand `oklch()` (or
-`oklab()`/`color-mix()`), and will either throw
+79 separate uses across backgrounds, text, borders, and shadows — which
+`html2canvas` 1.4.1's color parser does not understand (or `oklab()`/
+`color-mix()`), and would either throw
 (`Attempting to parse an unsupported color function "oklch"`) or silently
-mis-render colors when it encounters one. This affects both call sites:
-receipt PDF export (`src/routes/receipts.$id.tsx`) and admission form PDF
-export (`src/routes/students.$id.tsx`).
+mis-render colors. Affected both call sites: receipt PDF export
+(`src/routes/receipts.$id.tsx`) and admission form PDF export
+(`src/routes/students.$id.tsx`).
 
-Likely fixes (not yet attempted): render the exported element with an
-explicit inline/computed style override to plain `rgb()`/`hex` values
-before calling `html2canvas` (e.g. a print-specific stylesheet or a
-pre-export style pass), or switch to a canvas-rendering library with
-`oklch()` support, or upgrade `html2canvas` if/when a version adds support.
+Fixed by switching the dependency from `html2canvas` to `html2canvas-pro`
+(a maintained, API-compatible fork that adds parsing for `color()`,
+`lab()`, `lch()`, `oklab()`, and `oklch()`) — only the import in
+`src/lib/pdf/export.ts` and the `package.json` dependency changed, no
+call-site code. Verified: `tsc --noEmit`, `eslint`, and `vite build` all
+pass clean with the new dependency resolved and bundled. Not verified:
+an actual visual/pixel check of an exported PDF in a real browser (this
+environment has no headless browser available) — recommend a quick manual
+export-and-open check on both the receipt and admission-form PDFs before
+calling this fully closed end-to-end.
 
 ---
 

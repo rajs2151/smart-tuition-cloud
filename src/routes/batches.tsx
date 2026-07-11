@@ -24,6 +24,7 @@ import {
 } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
 import { inr, fmtDate } from "@/lib/format";
+import { sanitizeNumberInput } from "@/lib/number-input";
 import type { Batch, BatchType, Standard, Board, Medium, ExamCategory } from "@/lib/data/types";
 import { ImportStudentsDialog } from "@/components/import-students-dialog";
 import { Upload } from "lucide-react";
@@ -250,11 +251,25 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
             </div>
             <div className="space-y-1.5">
               <Label>Capacity</Label>
-              <Input type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: Number(e.target.value) })} />
+              <Input
+                type="number"
+                value={form.capacity}
+                onChange={(e) => {
+                  const cleaned = sanitizeNumberInput(e.target);
+                  setForm({ ...form, capacity: cleaned === "" ? 0 : Number(cleaned) });
+                }}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Monthly fee (₹)</Label>
-              <Input type="number" value={form.monthlyFee} onChange={(e) => setForm({ ...form, monthlyFee: Number(e.target.value) })} />
+              <Input
+                type="number"
+                value={form.monthlyFee}
+                onChange={(e) => {
+                  const cleaned = sanitizeNumberInput(e.target);
+                  setForm({ ...form, monthlyFee: cleaned === "" ? 0 : Number(cleaned) });
+                }}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Start date</Label>

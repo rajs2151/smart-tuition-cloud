@@ -10,8 +10,8 @@ a new task list. Update in place as items complete or priorities shift.
 - [x] Bulk Student Import — done (2026-07-09)
 - [x] Receipts (generate, view, print/PDF) — done, but see the PDF-export
   color bug in `KNOWN_ISSUES.md`
-- [ ] Fix PDF export color rendering (`oklch()` vs. `html2canvas`) —
-  see `KNOWN_ISSUES.md` for root cause and candidate fixes
+- [x] Fix PDF export color rendering (`oklch()` vs. `html2canvas`) — done
+  (2026-07-10), switched to `html2canvas-pro`; see `KNOWN_ISSUES.md`
 - [ ] Reports — yearly expense report (aggregate/rollup view, not just
   per-record listing)
 - [ ] Staff invitation UI (schema/RLS already support it — just needs a
