@@ -110,13 +110,13 @@ BEGIN
   -- ---------------------------------------------------------------------
   INSERT INTO public.batches (
     id, institute_id, name, type, standard, board, medium, faculty,
-    monthly_fee, capacity, start_date, active
+    total_course_fee, capacity, start_date, active
   ) VALUES
     (batch_10th_id, demo_institute_id, '10th Science - Batch A', 'standard',
-     '10th', 'State Board', 'Semi English', 'Mrs. Deshmukh', 1500, 40,
+     '10th', 'State Board', 'Semi English', 'Mrs. Deshmukh', 18000, 40,
      DATE '2026-06-01', true),
     (batch_12th_jee_id, demo_institute_id, '12th JEE Batch', 'exam',
-     '12th', 'CBSE', 'English', 'Mr. Kulkarni', 3000, 25,
+     '12th', 'CBSE', 'English', 'Mr. Kulkarni', 36000, 25,
      DATE '2026-06-01', true)
   ON CONFLICT (id) DO NOTHING;
 

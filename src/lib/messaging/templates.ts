@@ -177,11 +177,10 @@ Regards,
     content:
 `Dear {{ParentName}},
 
-We have received a payment of ₹{{PaidAmount}} towards the fees of {{StudentName}}.
+We have received a payment of ₹{{PaidAmount}} towards the fees of your child, {{StudentName}}.
 
 Receipt Number: {{ReceiptNumber}}
 Date: {{PaymentDate}}
-
 Remaining Balance: ₹{{PendingAmount}}
 
 Thank you for your payment.

@@ -6,35 +6,35 @@ export const batches: Batch[] = [
   {
     id: "b1", instituteId: INSTITUTE_ID, name: "10th State Board Marathi - A",
     type: "standard", standard: "10th", board: "State Board", medium: "Marathi",
-    faculty: "Mrs. P. Deshmukh", monthlyFee: 3000, capacity: 60, active: true,
+    faculty: "Mrs. P. Deshmukh", totalCourseFee: 36000, capacity: 60, active: true,
     startDate: "2025-06-01", endDate: "2026-03-31",
     course: "10th State Board",
   },
   {
     id: "b2", instituteId: INSTITUTE_ID, name: "10th CBSE English",
     type: "standard", standard: "10th", board: "CBSE", medium: "English",
-    faculty: "Mr. K. Joshi", monthlyFee: 3500, capacity: 50, active: true,
+    faculty: "Mr. K. Joshi", totalCourseFee: 42000, capacity: 50, active: true,
     startDate: "2025-06-01", endDate: "2026-03-31",
     course: "10th CBSE",
   },
   {
     id: "b3", instituteId: INSTITUTE_ID, name: "12th Science Morning",
     type: "standard", standard: "12th", board: "State Board", medium: "Semi English",
-    faculty: "Dr. R. Sharma", monthlyFee: 4500, capacity: 45, active: true,
+    faculty: "Dr. R. Sharma", totalCourseFee: 54000, capacity: 45, active: true,
     startDate: "2025-06-01", endDate: "2026-03-31",
     course: "12th Science",
   },
   {
     id: "b4", instituteId: INSTITUTE_ID, name: "JEE 2027 Foundation",
     type: "exam", examCategory: "JEE", examYear: 2027,
-    faculty: "Dr. R. Sharma", monthlyFee: 6000, capacity: 40, active: true,
+    faculty: "Dr. R. Sharma", totalCourseFee: 72000, capacity: 40, active: true,
     startDate: "2025-05-15", endDate: "2027-04-30",
     course: "JEE",
   },
   {
     id: "b5", instituteId: INSTITUTE_ID, name: "NEET 2027 Repeaters",
     type: "exam", examCategory: "NEET", examYear: 2027,
-    faculty: "Dr. S. Iyer", monthlyFee: 7000, capacity: 35, active: true,
+    faculty: "Dr. S. Iyer", totalCourseFee: 84000, capacity: 35, active: true,
     startDate: "2025-05-15", endDate: "2026-05-31",
     course: "NEET",
   },
@@ -55,7 +55,7 @@ const pick = <T,>(arr: T[]) => arr[Math.floor(rand() * arr.length)];
 
 export const students: Student[] = Array.from({ length: 48 }, (_, i) => {
   const batch = pick(batches);
-  const courseFee = batch.monthlyFee * 12;
+  const courseFee = batch.totalCourseFee;
   const admissionFee = 2000;
   const totalFee = courseFee + admissionFee;
   const paidPct = rand();

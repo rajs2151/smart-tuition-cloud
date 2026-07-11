@@ -72,7 +72,7 @@ export type Database = {
           id: string
           institute_id: string
           medium: string | null
-          monthly_fee: number
+          total_course_fee: number
           name: string
           standard: string | null
           start_date: string | null
@@ -96,7 +96,7 @@ export type Database = {
           id?: string
           institute_id: string
           medium?: string | null
-          monthly_fee?: number
+          total_course_fee?: number
           name: string
           standard?: string | null
           start_date?: string | null
@@ -120,7 +120,7 @@ export type Database = {
           id?: string
           institute_id?: string
           medium?: string | null
-          monthly_fee?: number
+          total_course_fee?: number
           name?: string
           standard?: string | null
           start_date?: string | null
