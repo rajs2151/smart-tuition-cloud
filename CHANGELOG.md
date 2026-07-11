@@ -14,6 +14,18 @@ first). Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   companions).
 
 ### Fixed
+- **PDF export color rendering**: `src/lib/pdf/export.ts` used
+  `html2canvas` (`^1.4.1`), whose color parser doesn't understand the
+  `oklch()` function that `src/styles.css` uses throughout the theme (79
+  uses) — this threw `Attempting to parse an unsupported color function
+  "oklch"` or silently mis-rendered colors on both PDF export call sites
+  (receipt PDF, admission form PDF). Replaced the dependency with
+  `html2canvas-pro`, an API-compatible fork that adds `oklch()`/`oklab()`/
+  `lab()`/`lch()`/`color()` support — only the import and the `package.json`
+  entry changed. `tsc --noEmit`, `eslint`, and `vite build` all pass clean.
+  Not verified: an actual visual check of an exported PDF in a real
+  browser (no headless browser available in the fixing environment) —
+  worth a quick manual export-and-open check.
 - **Disabled-account regression**: an automated merge had silently dropped
   `institute_members.access_enabled` and the `create_institute_with_owner`
   RPC from the generated `types.ts`, which cascaded into the "Account

@@ -1,12 +1,16 @@
 // Client-side PDF export helper.
-// Renders a DOM node to canvas via html2canvas and writes a real, downloadable
-// multi-page A4 PDF via jsPDF. Callers pass the element to snapshot and a
-// filename.
+// Renders a DOM node to canvas via html2canvas-pro (a maintained fork of
+// html2canvas that understands modern CSS color functions — oklch(),
+// oklab(), lab(), lch(), color() — which this app's theme in
+// src/styles.css relies on throughout; the original html2canvas 1.4.1
+// throws "Attempting to parse an unsupported color function" on them) and
+// writes a real, downloadable multi-page A4 PDF via jsPDF. Callers pass the
+// element to snapshot and a filename.
 
 export async function exportElementToPdf(el: HTMLElement, filename: string) {
   if (typeof window === "undefined") return;
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import("html2canvas"),
+    import("html2canvas-pro"),
     import("jspdf"),
   ]);
 
