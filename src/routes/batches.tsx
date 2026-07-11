@@ -98,8 +98,8 @@ function BatchesPage() {
                         <p className="font-display text-base font-bold">{countStudents(b.id)} / {b.capacity}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Monthly fee</p>
-                        <p className="font-display text-base font-bold">{inr(b.monthlyFee)}</p>
+                        <p className="text-muted-foreground">Total course fee</p>
+                        <p className="font-display text-base font-bold">{inr(b.totalCourseFee)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Faculty</p>
@@ -158,7 +158,7 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
       ? { ...batch }
       : {
           name: "", type: "standard", standard: "10th", board: "State Board", medium: "English",
-          faculty: "", monthlyFee: 3000, capacity: 50, active: true,
+          faculty: "", totalCourseFee: 30000, capacity: 50, active: true,
           startDate: "", endDate: "",
         },
   );
@@ -261,13 +261,13 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Monthly fee (₹)</Label>
+              <Label>Total course fee (₹)</Label>
               <Input
                 type="number"
-                value={form.monthlyFee}
+                value={form.totalCourseFee}
                 onChange={(e) => {
                   const cleaned = sanitizeNumberInput(e.target);
-                  setForm({ ...form, monthlyFee: cleaned === "" ? 0 : Number(cleaned) });
+                  setForm({ ...form, totalCourseFee: cleaned === "" ? 0 : Number(cleaned) });
                 }}
               />
             </div>

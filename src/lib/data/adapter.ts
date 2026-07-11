@@ -40,7 +40,7 @@ function toBatch(r: any): Batch {
     examCategory: r.exam_category ?? undefined,
     examYear: r.exam_year ?? undefined,
     faculty: r.faculty ?? undefined,
-    monthlyFee: Number(r.monthly_fee ?? 0),
+    totalCourseFee: Number(r.total_course_fee ?? 0),
     capacity: r.capacity ?? 0,
     startDate: r.start_date ?? undefined,
     endDate: r.end_date ?? undefined,
@@ -62,10 +62,10 @@ function fromBatch(b: Partial<Batch>): any {
   if (b.examCategory !== undefined) row.exam_category = b.examCategory;
   if (b.examYear !== undefined) row.exam_year = b.examYear;
   if (b.faculty !== undefined) row.faculty = b.faculty;
-  if (b.monthlyFee !== undefined) row.monthly_fee = b.monthlyFee;
+  if (b.totalCourseFee !== undefined) row.total_course_fee = b.totalCourseFee;
   if (b.capacity !== undefined) row.capacity = b.capacity;
-  if (b.startDate !== undefined) row.start_date = b.startDate;
-  if (b.endDate !== undefined) row.end_date = b.endDate;
+  if (b.startDate !== undefined) row.start_date = b.startDate || null;
+  if (b.endDate !== undefined) row.end_date = b.endDate || null;
   if (b.active !== undefined) row.active = b.active;
   if (b.course !== undefined) row.course = b.course;
   if (b.strength !== undefined) row.strength = b.strength;

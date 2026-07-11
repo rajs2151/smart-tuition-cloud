@@ -310,7 +310,7 @@ export function ImportStudentsDialog({
       // between chunks (yield to event loop via setTimeout)
       for (const r of chunk) {
         try {
-          const courseFee = (batch.monthlyFee ?? 0) * 12;
+          const courseFee = batch.totalCourseFee ?? 0;
           await createStudent({
             rollNo: r.rollNo || `${settings.institute.name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 90 + 10)}`,
             name: r.name,

@@ -25,7 +25,7 @@ export type Batch = {
   examYear?: number;
   // Common
   faculty?: string;
-  monthlyFee: number;
+  totalCourseFee: number;
   capacity: number;
   startDate?: string; // ISO
   endDate?: string;   // ISO

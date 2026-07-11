@@ -162,7 +162,7 @@ function FeesPage() {
                     </Button>
                   )}
                   <RecordPaymentDialog defaultStudentId={s.id} trigger={
-                    <Button size="sm"><IndianRupee className="h-4 w-4" /> Pay</Button>
+                    <Button size="sm" title="Receive payment"><IndianRupee className="h-4 w-4" /> Receive Payment</Button>
                   } />
                 </div>
               </div>
@@ -264,7 +264,7 @@ function RecordPaymentDialog({
       note,
       type: "fee",
     });
-    toast.success(`Payment recorded · ${created.receiptNo}`);
+    toast.success(`Payment received · ${created.receiptNo}`);
     setOpen(false);
     setAmount("");
     setNote("");
@@ -275,12 +275,12 @@ function RecordPaymentDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button><Plus className="h-4 w-4" /> Record payment</Button>
+          <Button><Plus className="h-4 w-4" /> Receive Payment</Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Record a payment</DialogTitle>
+          <DialogTitle>Receive Payment</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">

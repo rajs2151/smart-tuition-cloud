@@ -22,7 +22,7 @@ export function buildContext(opts: {
     InstituteName: institute.name,
     InstituteContact: institute.phone,
     StudentName: student?.name ?? "",
-    ParentName: student?.parentName ?? "Parent",
+    ParentName: student?.parentName?.trim() || "Parent",
     BatchName: batch?.name ?? student?.course ?? "",
     Standard: student?.standard ?? batch?.standard ?? "",
     Board: student?.board ?? batch?.board ?? "",

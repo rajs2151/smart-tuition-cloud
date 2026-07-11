@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { createStudent, listBatches } from "@/lib/data/adapter";
@@ -43,13 +44,15 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
     medium: "",
     examCategory: "",
     courseFee: 0,
-    admissionFee: 2000,
+    admissionFee: 0,
     discount: 0,
     installments: 1,
   });
+  const [courseFeeOverride, setCourseFeeOverride] = useState(false);
 
   const onB = (id: string) => {
     const b = batches.find((x) => x.id === id);
+    setCourseFeeOverride(false);
     setForm((f) => ({
       ...f,
       batchId: id,
@@ -57,7 +60,7 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
       board: b?.board ?? f.board,
       medium: b?.medium ?? f.medium,
       examCategory: b?.examCategory ?? f.examCategory,
-      courseFee: (b?.monthlyFee ?? 0) * 12,
+      courseFee: b?.totalCourseFee ?? 0,
     }));
   };
 
@@ -152,7 +155,30 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
 
           <TabsContent value="fees" className="space-y-3 pt-4">
             <div className="grid grid-cols-2 gap-3">
-              <NumField label="Course fee (₹)" value={form.courseFee} onChange={(v) => setForm({ ...form, courseFee: v })} />
+              <div className="col-span-2 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label>Course fee (₹)</Label>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Switch
+                      checked={courseFeeOverride}
+                      onCheckedChange={setCourseFeeOverride}
+                      className="scale-75"
+                    />
+                    Override
+                  </label>
+                </div>
+                <Input
+                  type="number"
+                  value={form.courseFee}
+                  disabled={!courseFeeOverride}
+                  onChange={(e) => setForm({ ...form, courseFee: Number(e.target.value) })}
+                />
+                {!courseFeeOverride && (
+                  <p className="text-xs text-muted-foreground">
+                    Auto-filled from the selected batch's total course fee. Turn on Override to change it for this student.
+                  </p>
+                )}
+              </div>
               <NumField label="Admission fee (₹)" value={form.admissionFee} onChange={(v) => setForm({ ...form, admissionFee: v })} />
               <NumField label="Discount (₹)" value={form.discount} onChange={(v) => setForm({ ...form, discount: v })} />
               <NumField label="Installments" value={form.installments} onChange={(v) => setForm({ ...form, installments: v })} />
