@@ -23,6 +23,8 @@ export type Database = {
           entity_id: string
           id: string
           institute_id: string
+          new_value: Json | null
+          old_value: Json | null
           summary: string | null
         }
         Insert: {
@@ -33,6 +35,8 @@ export type Database = {
           entity_id: string
           id?: string
           institute_id: string
+          new_value?: Json | null
+          old_value?: Json | null
           summary?: string | null
         }
         Update: {
@@ -43,6 +47,8 @@ export type Database = {
           entity_id?: string
           id?: string
           institute_id?: string
+          new_value?: Json | null
+          old_value?: Json | null
           summary?: string | null
         }
         Relationships: [
@@ -270,6 +276,9 @@ export type Database = {
           student_id: string
           type: string
           updated_at: string
+          voided: boolean
+          voided_at: string | null
+          voided_by: string | null
         }
         Insert: {
           amount: number
@@ -286,6 +295,9 @@ export type Database = {
           student_id: string
           type?: string
           updated_at?: string
+          voided?: boolean
+          voided_at?: string | null
+          voided_by?: string | null
         }
         Update: {
           amount?: number
@@ -302,6 +314,9 @@ export type Database = {
           student_id?: string
           type?: string
           updated_at?: string
+          voided?: boolean
+          voided_at?: string | null
+          voided_by?: string | null
         }
         Relationships: [
           {
@@ -391,6 +406,7 @@ export type Database = {
           course: string | null
           course_fee: number
           created_at: string
+          date_of_birth: string | null
           deleted: boolean
           deleted_at: string | null
           deleted_by: string | null
@@ -422,6 +438,7 @@ export type Database = {
           course?: string | null
           course_fee?: number
           created_at?: string
+          date_of_birth?: string | null
           deleted?: boolean
           deleted_at?: string | null
           deleted_by?: string | null
@@ -453,6 +470,7 @@ export type Database = {
           course?: string | null
           course_fee?: number
           created_at?: string
+          date_of_birth?: string | null
           deleted?: boolean
           deleted_at?: string | null
           deleted_by?: string | null

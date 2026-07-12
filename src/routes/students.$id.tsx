@@ -269,9 +269,13 @@ function StudentDetail() {
                     {payments.map((p) => (
                       <li key={p.id} className="relative">
                         <span className="absolute -left-[29px] top-1.5 flex h-3 w-3 items-center justify-center rounded-full bg-primary ring-4 ring-background" />
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card/40 p-3">
+                        <div className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card/40 p-3 ${p.voided ? "opacity-60" : ""}`}>
                           <div>
-                            <p className="font-semibold">{inr(p.amount)} <span className="ml-1 text-xs font-normal text-muted-foreground">via {p.mode}</span></p>
+                            <p className="font-semibold">
+                              {p.voided && <Badge variant="destructive" className="mr-2 align-middle">Voided</Badge>}
+                              <span className={p.voided ? "line-through" : ""}>{inr(p.amount)}</span>
+                              <span className="ml-1 text-xs font-normal text-muted-foreground">via {p.mode}</span>
+                            </p>
                             <p className="text-xs text-muted-foreground">{fmtDate(p.date)} · {p.receiptNo}</p>
                           </div>
                           <Button variant="outline" size="sm" asChild>

@@ -1,7 +1,21 @@
 import { useSyncExternalStore } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { getSession } from "@/lib/auth/session";
+import { getSettings } from "@/lib/settings/store";
+import type { Json } from "@/integrations/supabase/types";
+
+/** Round-trips a value through JSON so it's guaranteed storable in a `jsonb` column. */
+function toJsonSafe(value: unknown): Json | null {
+  if (value === undefined || value === null) return null;
+  try {
+    return JSON.parse(JSON.stringify(value)) as Json;
+  } catch {
+    return null;
+  }
+}
 
 export type AuditEntity = "student" | "payment" | "batch" | "expense" | "category" | "receipt";
-export type AuditAction = "create" | "update" | "delete" | "restore" | "purge";
+export type AuditAction = "create" | "update" | "delete" | "restore" | "purge" | "void";
 
 export type AuditLog = {
   id: string;
@@ -11,6 +25,8 @@ export type AuditLog = {
   by: string;
   at: string;
   summary?: string;
+  oldValue?: unknown;
+  newValue?: unknown;
 };
 
 export type RecycleItem = {
@@ -51,6 +67,28 @@ export function logAudit(input: Omit<AuditLog, "id" | "at">) {
     at: new Date().toISOString(),
   };
   set({ ...state, logs: [log, ...state.logs].slice(0, 1000) });
+
+  // Best-effort write-through to the real `audit_logs` table so the entry
+  // is durable and shared across devices/staff, not just this browser's
+  // localStorage. Fire-and-forget: a failed audit write must never block
+  // or fail the action being audited.
+  const instituteId = getSession().instituteId ?? getSettings().institute.id ?? null;
+  if (!instituteId) return;
+  supabase
+    .from("audit_logs")
+    .insert({
+      institute_id: instituteId,
+      entity: input.entity,
+      entity_id: input.entityId,
+      action: input.action,
+      by_user: getSession().userId,
+      summary: input.summary ?? null,
+      old_value: toJsonSafe(input.oldValue),
+      new_value: toJsonSafe(input.newValue),
+    })
+    .then(({ error }) => {
+      if (error) console.error("audit_logs insert failed:", error);
+    });
 }
 
 export function addRecycle(item: Omit<RecycleItem, "id">) {

@@ -16,28 +16,58 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-import { createStudent, listBatches } from "@/lib/data/adapter";
+import { createStudent, updateStudent, listBatches } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
+import type { Student } from "@/lib/data/types";
 
 const batchesQ = {
   queryKey: ["all-batches"],
   queryFn: () => listBatches(),
 };
 
-export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
+export function AddStudentDialog({ trigger, student, open: openProp, onOpenChange: onOpenChangeProp }: {
+  trigger?: React.ReactNode;
+  /** When provided, the dialog opens pre-filled for editing this student instead of admitting a new one. */
+  student?: Student;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
   const qc = useQueryClient();
   const settings = useSettings();
   const { data: batches } = useSuspenseQuery(batchesQ);
-  const [open, setOpen] = useState(false);
+  const isEdit = !!student;
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = onOpenChangeProp ?? setOpenState;
 
   const [tab, setTab] = useState<"personal" | "academic" | "fees">("personal");
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => student ? {
+    name: student.name,
+    phone: student.phone,
+    parentName: student.parentName ?? "",
+    parentPhone: student.parentPhone ?? "",
+    email: student.email ?? "",
+    address: student.address ?? "",
+    dob: student.dob ?? "",
+    rollNo: student.rollNo,
+    batchId: student.batchId,
+    standard: student.standard ?? "",
+    board: student.board ?? "",
+    medium: student.medium ?? "",
+    examCategory: student.examCategory ?? "",
+    courseFee: student.courseFee,
+    admissionFee: student.admissionFee,
+    discount: student.discount,
+    installments: student.installments?.length || 1,
+  } : {
     name: "",
     phone: "",
     parentName: "",
     parentPhone: "",
     email: "",
     address: "",
+    dob: "",
+    rollNo: "",
     batchId: "",
     standard: "",
     board: "",
@@ -48,7 +78,10 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
     discount: 0,
     installments: 1,
   });
-  const [courseFeeOverride, setCourseFeeOverride] = useState(false);
+  // Editing an existing student's already-settled fee is a deliberate override
+  // by default; a fresh admission auto-fills from the batch until the coach
+  // explicitly opts in to overriding it.
+  const [courseFeeOverride, setCourseFeeOverride] = useState(isEdit);
 
   const onB = (id: string) => {
     const b = batches.find((x) => x.id === id);
@@ -68,14 +101,15 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
     if (!form.name || !form.phone) return toast.error("Student name and phone are required");
     if (!form.batchId) return toast.error("Select a batch");
     const total = Number(form.courseFee) + Number(form.admissionFee);
-    await createStudent({
-      rollNo: `${settings.institute.name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-6)}`,
+    const common = {
+      rollNo: form.rollNo,
       name: form.name,
       phone: form.phone,
       parentName: form.parentName,
       parentPhone: form.parentPhone,
       email: form.email,
       address: form.address,
+      dob: form.dob || undefined,
       batchId: form.batchId,
       standard: (form.standard || undefined) as never,
       board: form.board || undefined,
@@ -85,24 +119,39 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
       admissionFee: Number(form.admissionFee),
       discount: Number(form.discount),
       totalFee: total,
-      paidFee: 0,
-      admissionDate: new Date().toISOString().slice(0, 10),
-      status: "active",
-      course: batches.find((b) => b.id === form.batchId)?.course,
-    });
-    toast.success("Student admitted");
+    };
+    if (isEdit) {
+      await updateStudent(student.id, common);
+      toast.success("Student updated");
+    } else {
+      await createStudent({
+        ...common,
+        rollNo: form.rollNo || `${settings.institute.name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-6)}`,
+        paidFee: 0,
+        admissionDate: new Date().toISOString().slice(0, 10),
+        status: "active",
+        course: batches.find((b) => b.id === form.batchId)?.course,
+      });
+      toast.success("Student admitted");
+    }
     await qc.invalidateQueries();
     setOpen(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? <Button><Plus className="h-4 w-4" /> Add student</Button>}
-      </DialogTrigger>
+      {openProp === undefined && (
+        trigger !== undefined ? (
+          <DialogTrigger asChild>{trigger}</DialogTrigger>
+        ) : !isEdit ? (
+          <DialogTrigger asChild>
+            <Button><Plus className="h-4 w-4" /> Add student</Button>
+          </DialogTrigger>
+        ) : null
+      )}
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>New student admission</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit ${student.name}` : "New student admission"}</DialogTitle>
         </DialogHeader>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
@@ -118,8 +167,11 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
               <FormField label="Mobile number *" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
               <FormField label="Parent name" value={form.parentName} onChange={(v) => setForm({ ...form, parentName: v })} />
               <FormField label="Parent mobile" value={form.parentPhone} onChange={(v) => setForm({ ...form, parentPhone: v })} />
-              <div className="col-span-2">
-                <FormField label="Email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
+              <FormField label="Roll number" value={form.rollNo} onChange={(v) => setForm({ ...form, rollNo: v })} />
+              <FormField label="Email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
+              <div className="space-y-1.5">
+                <Label>Date of birth</Label>
+                <Input type="date" value={form.dob} onChange={(e) => setForm({ ...form, dob: e.target.value })} />
               </div>
               <div className="col-span-2 space-y-1.5">
                 <Label>Address</Label>
@@ -139,6 +191,13 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
                   ))}
                 </SelectContent>
               </Select>
+              {isEdit && (
+                <p className="text-xs text-muted-foreground">
+                  {batches.find((b) => b.id === form.batchId)?.faculty
+                    ? `Faculty: ${batches.find((b) => b.id === form.batchId)?.faculty}`
+                    : "Changing the batch does not overwrite an already-customized course fee."}
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-3">
               <PickField label="Standard" value={form.standard} options={settings.master.standards}
@@ -195,7 +254,7 @@ export function AddStudentDialog({ trigger }: { trigger?: React.ReactNode }) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit}>Admit student</Button>
+          <Button onClick={submit}>{isEdit ? "Save changes" : "Admit student"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

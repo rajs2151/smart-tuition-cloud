@@ -58,6 +58,7 @@ export type Student = {
   email?: string;
   address?: string;
   photo?: string;
+  dob?: string; // ISO
 
   // Academic
   batchId: string;
@@ -101,6 +102,10 @@ export type Payment = {
   deleted?: boolean;
   deletedAt?: string;
   deletedBy?: string;
+
+  voided?: boolean;
+  voidedAt?: string;
+  voidedBy?: string;
 };
 
 export type Receipt = {
