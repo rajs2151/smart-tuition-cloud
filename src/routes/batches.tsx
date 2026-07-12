@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus, BookOpen, GraduationCap, Pencil, Trash2 } from "lucide-react";
+import { Plus, BookOpen, GraduationCap, Pencil, Trash2, FileDown } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,9 +25,10 @@ import {
 import { useSettings } from "@/lib/settings/store";
 import { inr, fmtDate } from "@/lib/format";
 import { sanitizeNumberInput } from "@/lib/number-input";
-import type { Batch, BatchType, Standard, Board, Medium, ExamCategory } from "@/lib/data/types";
+import type { Batch, BatchType, Standard, Board, Medium, ExamCategory, Student } from "@/lib/data/types";
 import { ImportStudentsDialog } from "@/components/import-students-dialog";
 import { Upload } from "lucide-react";
+import { downloadBatchFeeReport } from "@/lib/reports/batch-fee-report";
 
 const q = {
   queryKey: ["batches-page"],
@@ -115,6 +116,8 @@ function BatchesPage() {
                         <DeleteBatchButton id={b.id} />
                       </div>
                     </div>
+
+                    <DownloadFeeReportButton batch={b} students={data.students} />
                   </CardContent>
                 </Card>
               ))}
@@ -302,6 +305,37 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
         />
       ) : null}
     </Dialog>
+  );
+}
+
+function DownloadFeeReportButton({ batch, students }: { batch: Batch; students: Student[] }) {
+  const [loading, setLoading] = useState(false);
+  const studentCount = students.filter((s) => s.batchId === batch.id).length;
+
+  const handleDownload = async () => {
+    setLoading(true);
+    try {
+      await downloadBatchFeeReport(batch, students);
+      toast.success("Fee report downloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not generate the fee report");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="w-full"
+      disabled={loading || studentCount === 0}
+      onClick={handleDownload}
+      title={studentCount === 0 ? "No students in this batch yet" : "Download Batch Fee Report"}
+    >
+      <FileDown className="h-3.5 w-3.5" />
+      {loading ? "Generating…" : "Download Batch Fee Report"}
+    </Button>
   );
 }
 

@@ -19,6 +19,17 @@ export const fmtDate = (iso: string) =>
     year: "numeric",
   });
 
+/**
+ * Today's date as YYYY-MM-DD in the *local* calendar day, not UTC.
+ * `new Date().toISOString()` is UTC-based, which for IST (UTC+5:30) rolls
+ * back to "yesterday" for the first ~5.5 hours of every local day — wrong
+ * for a filename date on an India-focused app.
+ */
+export const todayLocalISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 export const initials = (name: string) =>
   name
     .split(" ")
