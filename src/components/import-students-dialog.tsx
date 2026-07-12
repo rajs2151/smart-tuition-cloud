@@ -36,6 +36,14 @@ type ParsedRow = {
   email?: string;
   address?: string;
   dob?: string;
+  // Historical fee-collection import (all optional; see spec).
+  paidFeeRaw?: string;
+  paidFee?: number;              // parsed & validated amount (only set when valid)
+  paymentDateRaw?: string;
+  paymentDate?: string;          // normalized YYYY-MM-DD (only set when valid)
+  paymentModeRaw?: string;
+  paymentMode?: string;          // normalized to one of PAYMENT_MODES' canonical values
+  paymentDescription?: string;
   errors: string[];
   warnings: string[];
   duplicate: boolean;
@@ -51,7 +59,7 @@ type ImportResult = {
 
 // ---------- Column mapping ----------
 
-const COLUMNS: Array<{ key: keyof Omit<ParsedRow, "rowNumber" | "errors" | "warnings" | "duplicate" | "duplicateReason" | "raw">; label: string; required?: boolean; aliases: string[] }> = [
+const COLUMNS: Array<{ key: keyof Omit<ParsedRow, "rowNumber" | "errors" | "warnings" | "duplicate" | "duplicateReason" | "paidFee" | "paymentDate" | "paymentMode" | "raw">; label: string; required?: boolean; aliases: string[] }> = [
   { key: "name", label: "Student Name", required: true, aliases: ["student name", "name", "student"] },
   { key: "phone", label: "Mobile Number", aliases: ["mobile number", "mobile", "phone", "student mobile", "student phone", "contact"] },
   { key: "parentName", label: "Parent Name", aliases: ["parent name", "guardian", "father name", "guardian name"] },
@@ -60,12 +68,17 @@ const COLUMNS: Array<{ key: keyof Omit<ParsedRow, "rowNumber" | "errors" | "warn
   { key: "email", label: "Email", aliases: ["email", "email id", "e-mail"] },
   { key: "address", label: "Address", aliases: ["address"] },
   { key: "dob", label: "Date of Birth", aliases: ["date of birth", "dob", "birth date", "birthdate"] },
+  // Historical fee-collection import — all optional, additive, backward compatible.
+  { key: "paidFeeRaw", label: "Paid Fee", aliases: ["paid fee", "amount paid", "paid amount"] },
+  { key: "paymentDateRaw", label: "Payment Date", aliases: ["payment date", "date paid", "paid on", "paid date"] },
+  { key: "paymentModeRaw", label: "Payment Mode", aliases: ["payment mode", "mode", "payment method"] },
+  { key: "paymentDescription", label: "Description", aliases: ["description", "note", "notes", "remarks", "payment note"] },
 ];
 
 const TEMPLATE_HEADERS = COLUMNS.map((c) => c.label);
 const TEMPLATE_SAMPLE: string[][] = [
-  ["Aarav Sharma", "9876543210", "Rakesh Sharma", "9876500001", "R-001", "aarav@example.com", "Pune, MH", "2010-04-12"],
-  ["Isha Patil", "9123456789", "Suresh Patil", "9123400002", "R-002", "isha@example.com", "Nashik, MH", "2011-08-03"],
+  ["Aarav Sharma", "9876543210", "Rakesh Sharma", "9876500001", "R-001", "aarav@example.com", "Pune, MH", "2010-04-12", "15000", "2026-04-09", "Cash", "First Installment"],
+  ["Isha Patil", "9123456789", "Suresh Patil", "9123400002", "R-002", "isha@example.com", "Nashik, MH", "2011-08-03", "", "", "", ""],
 ];
 
 function normalizeHeader(h: string): string {
@@ -93,6 +106,102 @@ function normalizePhone(v: unknown): string {
 
 function isValidPhone(p: string): boolean {
   return /^[6-9]\d{9}$/.test(p);
+}
+
+// ---------- Historical payment parsing (Paid Fee / Payment Date / Payment Mode) ----------
+
+const MONTH_NAMES: Record<string, number> = {
+  jan: 1, january: 1, feb: 2, february: 2, mar: 3, march: 3, apr: 4, april: 4,
+  may: 5, jun: 6, june: 6, jul: 7, july: 7, aug: 8, august: 8,
+  sep: 9, sept: 9, september: 9, oct: 10, october: 10, nov: 11, november: 11, dec: 12, december: 12,
+};
+
+function daysInMonth(y: number, m: number): number {
+  return new Date(y, m, 0).getDate();
+}
+
+/**
+ * Today's date as YYYY-MM-DD in the *local* calendar day, not UTC.
+ * `new Date().toISOString()` is UTC-based, which for IST (UTC+5:30) rolls
+ * back to "yesterday" for the first ~5.5 hours of every local day — the
+ * wrong default for a Payment Date field on an India-focused app.
+ */
+function todayLocalISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function makeISODate(y: number, m: number, d: number): string | null {
+  if (!Number.isInteger(y) || y < 1000 || y > 9999) return null;
+  if (!Number.isInteger(m) || m < 1 || m > 12) return null;
+  if (!Number.isInteger(d) || d < 1 || d > daysInMonth(y, m)) return null;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+/**
+ * Parses a "Payment Date" cell into a normalized YYYY-MM-DD string.
+ * Supports: 2026-04-09, 2026/04/09, 2026.04.09, 09-04-2026, 09/04/2026,
+ * 30-Jun-2026, 30 June 2026, Jun 30 2026 (with or without a comma).
+ * Returns null for anything that isn't a real calendar date (e.g. 31-Feb-2026,
+ * 99/99/2026, "abcd").
+ */
+function parsePaymentDate(raw: string): string | null {
+  const s = raw.trim();
+  if (!s) return null;
+
+  // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (m) return makeISODate(+m[1], +m[2], +m[3]);
+
+  // DD-MM-YYYY / DD/MM/YYYY
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (m) return makeISODate(+m[3], +m[2], +m[1]);
+
+  // DD-Mon-YYYY or DD Month YYYY, e.g. "30-Jun-2026" / "30 June 2026"
+  m = s.match(/^(\d{1,2})[-\s]([A-Za-z]+)[-\s](\d{4})$/);
+  if (m) {
+    const mon = MONTH_NAMES[m[2].toLowerCase()];
+    if (mon) return makeISODate(+m[3], mon, +m[1]);
+  }
+
+  // Mon DD YYYY or Mon DD, YYYY, e.g. "Jun 30 2026" / "June 30, 2026"
+  m = s.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$/);
+  if (m) {
+    const mon = MONTH_NAMES[m[1].toLowerCase()];
+    if (mon) return makeISODate(+m[3], mon, +m[2]);
+  }
+
+  return null;
+}
+
+/** Renders a normalized YYYY-MM-DD as "09-Apr-2026" for the preview column. */
+function formatDateDMY(iso: string): string {
+  const [y, mo, d] = iso.split("-");
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${d}-${months[Number(mo) - 1]}-${y}`;
+}
+
+const PAYMENT_MODES: Record<string, string> = {
+  cash: "Cash", upi: "UPI", card: "Card",
+  "bank transfer": "Bank Transfer", banktransfer: "Bank Transfer",
+  cheque: "Cheque", check: "Cheque", online: "Online", other: "Other",
+};
+
+function normalizePaymentMode(v: string): string | null {
+  const key = v.trim().toLowerCase().replace(/\s+/g, " ");
+  return PAYMENT_MODES[key] ?? null;
+}
+
+/** "Historical Payment" preview-column label. */
+function historicalPaymentLabel(r: ParsedRow): string {
+  const paymentErr = r.errors.some(
+    (e) => e === "Invalid Paid Fee" || e === "Paid Fee exceeds Course Fee" ||
+      e === "Invalid Payment Date" || e === "Invalid Payment Mode",
+  );
+  if (paymentErr) return "Invalid";
+  if (r.paidFee === undefined) return "No payment";
+  const amt = `₹${r.paidFee.toLocaleString("en-IN")}`;
+  return r.paymentDate ? `${amt} on ${formatDateDMY(r.paymentDate)}` : amt;
 }
 
 // ---------- Parsing ----------
@@ -127,6 +236,10 @@ function mapRow(raw: RawRow, rowNumber: number): ParsedRow {
     email: pick(COLUMNS[5].aliases) || undefined,
     address: pick(COLUMNS[6].aliases) || undefined,
     dob: pick(COLUMNS[7].aliases) || undefined,
+    paidFeeRaw: pick(COLUMNS[8].aliases) || undefined,
+    paymentDateRaw: pick(COLUMNS[9].aliases) || undefined,
+    paymentModeRaw: pick(COLUMNS[10].aliases) || undefined,
+    paymentDescription: pick(COLUMNS[11].aliases) || undefined,
     errors: [],
     warnings: [],
     duplicate: false,
@@ -135,7 +248,7 @@ function mapRow(raw: RawRow, rowNumber: number): ParsedRow {
   return row;
 }
 
-function validateRow(r: ParsedRow) {
+function validateRow(r: ParsedRow, courseFee: number) {
   // Student Name is the only required field.
   if (!r.name) r.errors.push("Missing Student Name");
 
@@ -148,6 +261,40 @@ function validateRow(r: ParsedRow) {
   if (r.parentPhone && !isValidPhone(r.parentPhone)) r.warnings.push("Invalid parent mobile");
 
   if (r.email && !/^\S+@\S+\.\S+$/.test(r.email)) r.warnings.push("Invalid email");
+
+  // ---- Historical fee-collection import (all optional) ----
+  const paidFeeRaw = r.paidFeeRaw?.trim();
+  if (paidFeeRaw) {
+    const n = Number(paidFeeRaw);
+    if (!Number.isFinite(n) || n < 0) {
+      r.errors.push("Invalid Paid Fee");
+    } else if (courseFee > 0 && n > courseFee) {
+      r.errors.push("Paid Fee exceeds Course Fee");
+    } else {
+      r.paidFee = Math.round((n + Number.EPSILON) * 100) / 100;
+    }
+  }
+
+  const paymentDateRaw = r.paymentDateRaw?.trim();
+  if (paymentDateRaw) {
+    const iso = parsePaymentDate(paymentDateRaw);
+    if (!iso) r.errors.push("Invalid Payment Date");
+    else r.paymentDate = iso;
+  }
+
+  const paymentModeRaw = r.paymentModeRaw?.trim();
+  if (paymentModeRaw) {
+    const normalized = normalizePaymentMode(paymentModeRaw);
+    if (!normalized) r.errors.push("Invalid Payment Mode");
+    else r.paymentMode = normalized;
+  }
+
+  // A historical payment only gets created when Paid Fee parsed successfully.
+  // Apply the documented defaults for the fields that were left blank.
+  if (r.paidFee !== undefined) {
+    if (!paymentModeRaw) r.paymentMode = "Cash";
+    if (!paymentDateRaw) r.paymentDate = todayLocalISO();
+  }
 }
 
 // ---------- Component ----------
@@ -208,7 +355,8 @@ export function ImportStudentsDialog({
         return;
       }
       const parsed = raw.map((r, i) => mapRow(r, i + 2)); // +2 for header row and 1-based
-      parsed.forEach(validateRow);
+      const courseFee = batch.totalCourseFee ?? 0;
+      parsed.forEach((r) => validateRow(r, courseFee));
 
       // Duplicate Roll Number detection (within the uploaded file only).
       // Non-blocking: rows are flagged with a warning but still imported.
@@ -263,7 +411,7 @@ export function ImportStudentsDialog({
       console.error(err);
       toast.error("Could not read file. Ensure it is a valid .xlsx or .csv");
     }
-  }, []);
+  }, [batch.totalCourseFee]);
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -328,7 +476,7 @@ export function ImportStudentsDialog({
             admissionFee: 0,
             discount: 0,
             totalFee: courseFee,
-            paidFee: 0,
+            paidFee: r.paidFee ?? 0,
             admissionDate: new Date().toISOString().slice(0, 10),
             status: "active",
             course: batch.course,
@@ -363,13 +511,30 @@ export function ImportStudentsDialog({
     if (!failed.length) return;
     const rowsAoa = [
       [...TEMPLATE_HEADERS, "Reason"],
-      ...failed.map((f) => [f.name, f.phone, f.parentName ?? "", f.parentPhone ?? "", f.rollNo ?? "", f.email ?? "", f.address ?? "", f.dob ?? "", f.reason]),
+      ...failed.map((f) => [
+        f.name, f.phone, f.parentName ?? "", f.parentPhone ?? "", f.rollNo ?? "", f.email ?? "", f.address ?? "", f.dob ?? "",
+        f.paidFeeRaw ?? "", f.paymentDateRaw ?? "", f.paymentModeRaw ?? "", f.paymentDescription ?? "",
+        f.reason,
+      ]),
     ];
     const ws = XLSX.utils.aoa_to_sheet(rowsAoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Failed");
     XLSX.writeFile(wb, `failed-imports-${Date.now()}.csv`, { bookType: "csv" });
   };
+
+  const importSummary = useMemo(() => {
+    const successes = imported.filter((r) => r.status === "success");
+    const paymentsCreated = successes.filter((r) => r.row.paidFee !== undefined).length;
+    const withoutPayment = successes.filter((r) => r.row.paidFee === undefined).length;
+    return {
+      studentsImported: successes.length,
+      paymentsCreated,
+      withoutPayment,
+      failedRows: imported.filter((r) => r.status === "failed").length + stats.invalid,
+      duplicatesSkipped: stats.duplicate,
+    };
+  }, [imported, stats]);
 
   // ---------- Render ----------
 
@@ -444,6 +609,7 @@ export function ImportStudentsDialog({
                     <TableHead>Name</TableHead>
                     <TableHead>Mobile</TableHead>
                     <TableHead>Parent</TableHead>
+                    <TableHead>Historical Payment</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -454,6 +620,7 @@ export function ImportStudentsDialog({
                       <TableCell className="font-medium">{r.name || "—"}</TableCell>
                       <TableCell className="font-mono text-xs">{r.phone || "—"}</TableCell>
                       <TableCell className="text-xs">{r.parentName ?? "—"}</TableCell>
+                      <TableCell className="text-xs">{historicalPaymentLabel(r)}</TableCell>
                       <TableCell>
                         {r.errors.length > 0 ? (
                           <Badge variant="destructive" className="text-[10px]">{r.errors.join(", ")}</Badge>
@@ -499,21 +666,19 @@ export function ImportStudentsDialog({
               <CheckCircle2 className="mx-auto h-8 w-8 text-success" />
               <p className="mt-2 font-display text-lg font-bold">Import complete</p>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <StatCard label="Total" value={stats.total} />
-              <StatCard label="Imported" value={imported.filter((r) => r.status === "success").length} tone="success" />
-              <StatCard label="Duplicates" value={stats.duplicate} tone="warn" />
-              <StatCard
-                label="Failed"
-                value={imported.filter((r) => r.status === "failed").length + stats.invalid}
-                tone="danger"
-              />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <StatCard label="Total Students" value={stats.total} />
+              <StatCard label="Students Imported" value={importSummary.studentsImported} tone="success" />
+              <StatCard label="Historical Payments Created" value={importSummary.paymentsCreated} tone="success" />
+              <StatCard label="Students Without Payment History" value={importSummary.withoutPayment} />
+              <StatCard label="Duplicates Skipped" value={importSummary.duplicatesSkipped} tone="warn" />
+              <StatCard label="Failed Rows" value={importSummary.failedRows} tone="danger" />
             </div>
             <DialogFooter>
               <Button
                 variant="outline"
                 onClick={downloadFailedCSV}
-                disabled={imported.filter((r) => r.status === "failed").length + stats.invalid + stats.duplicate === 0}
+                disabled={importSummary.failedRows + importSummary.duplicatesSkipped === 0}
               >
                 <Download className="h-4 w-4" /> Download failed records
               </Button>
