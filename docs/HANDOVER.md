@@ -1,6 +1,6 @@
 # Project Handover
 
-_Last updated: July 10, 2026_
+_Last updated: July 12, 2026_
 
 ---
 
@@ -38,11 +38,31 @@ per-member `access_enabled` flag. Everything else (`batches`, `students`,
   receipt view), fee recovery tracking, recycle bin (soft-delete recovery),
   settings
 - Full RLS-protected multi-tenancy across all data tables
+- PDF export (receipts, admission form) via `html2canvas-pro`, fixed to
+  handle the `oklch()`/`oklab()`/`color()` colors used throughout the theme
+- Bulk student import: Student Name-only rows, robust phone normalization,
+  phone/parent-phone duplicate detection
+- Batch fee model: batches store one **Total Course Fee** (not a monthly
+  rate); Student Admission auto-fills Course Fee from the selected batch,
+  read-only by default with an explicit override toggle; batch Start/End
+  dates are genuinely optional
+- Fees screen consistently uses "Receive Payment" language (the institute
+  receives money, it doesn't pay it)
+- WhatsApp payment acknowledgement always greets by parent name or falls
+  back to "Dear Parent," — never blank
+- Controlled editing: a ⋮ overflow menu on Student and Payment rows for
+  **Edit Student**, **Archive Student** (soft-delete/recycle, not permanent
+  delete), **Edit Payment** (amount/date/mode/notes only), **Void Payment**
+  (stays visible in history, excluded from totals) — all owner-only, with
+  audit-logged old/new value snapshots
 
 ### Features under development
-- None actively in progress as of this handover — the most recent work
-  (this session) was infrastructure/auth stabilization and a bulk student
-  import feature, both now merged to `main`.
+- None actively in progress as of this handover. The most recent work (see
+  **Recent Changes → Session 2**) is four merged PRs (#1–#3) plus one open
+  PR (#4, controlled editing) awaiting review/merge and, critically,
+  awaiting the new migrations being applied to the live database (see
+  **Manual Steps Remaining** — merging a PR does **not** run its
+  migration).
 
 ### Pending tasks
 - Staff invitation UI — the schema/RLS already support an owner adding a
@@ -55,6 +75,21 @@ per-member `access_enabled` flag. Everything else (`batches`, `students`,
   institute (edge case; a unique index currently limits one *owned*
   institute per user, but a `staff` member could theoretically belong to
   more than one).
+- No "Admin" role tier — the role model is only `owner`/`staff`. The new
+  controlled-editing feature's "Owner and Admin only" requirement was
+  mapped to `owner`-only pending a real decision on whether a third role
+  tier is needed.
+- RLS on `students`/`payments` is not yet column-aware — any member can
+  still `UPDATE` either table at the database level, not just owners. The
+  new Edit/Void UI hides itself for non-owners, but that's a UI convenience,
+  not a security boundary. See **Known Issues** for why this wasn't
+  tightened blindly.
+- The Recycle Bin / Audit Log page (`recycle-bin.tsx`) still reads from
+  browser `localStorage`, not the database — see **Known Issues**.
+- Same-message-flag repetition risk in `add-student-dialog.tsx`,
+  `expenses.tsx`, and `settings.tsx`: the leading-zero controlled-number-input
+  bug (fixed in `batches.tsx` in an earlier session) still exists in these
+  three other numeric inputs — flagged, not yet fixed.
 
 ---
 
@@ -69,8 +104,9 @@ previous Lovable-managed project.
 7 tables, all with RLS enabled: `institutes`, `institute_members`,
 `batches`, `students`, `payments`, `receipts`, `audit_logs`, plus Supabase's
 built-in `auth.users`. Full table-by-table breakdown (columns, PKs, FKs,
-purpose) is in `docs/backend-architecture.md` §5. 6 migrations currently
-applied, in order:
+purpose) is in `docs/backend-architecture.md` §5. 8 migrations committed,
+in order (the last 2 are **not yet applied to the live database** — see
+**Manual Steps Remaining**):
 
 ```
 20260703064918_179279b9-...  initial schema
@@ -79,6 +115,8 @@ applied, in order:
 20260707085440_be05dcf2-...  add subscription_status
 20260707120000_fix_onboarding_race_and_access_control  atomic institute creation RPC, access_enabled, one-owner-per-user unique index
 20260709055109_fix_authenticated_execute_grants        fixes the grant bug from migration 2
+20260711130000_batch_total_course_fee                  batches.monthly_fee -> total_course_fee (renamed, backfilled *12)
+20260711140000_payment_void_and_audit_diffs            payments.voided/voided_at/voided_by, audit_logs.old_value/new_value, students.date_of_birth
 ```
 
 ### Authentication
@@ -202,6 +240,67 @@ Everything below happened in this working session, in order:
 12. **Wrote a CI migration-validation workflow** (not yet pushed — see
     **Manual Steps Remaining**).
 
+## Session 2 (July 11–12, 2026) — five PRs, #1–#3 merged, #4 open
+
+1. **PR #1 — PDF export `oklch()` crash + a leading-zero input bug.**
+   `html2canvas` 1.4.1 couldn't parse the `oklch()` color function used
+   throughout `src/styles.css`, breaking both receipt and admission-form
+   PDF export. Swapped it for `html2canvas-pro` (API-compatible fork with
+   `oklch()`/`oklab()`/`lab()`/`lch()`/`color()` support) — only the import
+   and one `package.json` line changed. Also fixed a stray leading zero in
+   the Capacity/Monthly fee inputs on the batch dialog (a classic React
+   controlled-`type="number"` quirk: React skips re-syncing the DOM when
+   the *parsed* value is unchanged, so `"016"` sticks around since it still
+   parses to `16`) via a `sanitizeNumberInput()` helper. **Merged.**
+2. **PR #2 — bulk import validation review.** Reviewed an updated
+   `import-students-dialog.tsx` against a checklist (name-only rows,
+   optional mobile, phone normalization, duplicate detection, TS
+   strictness). Found one real regression: `isValidPhone` had been loosened
+   to accept any 10-digit string (e.g. `0123456789`), dropping the
+   `[6-9]` Indian-mobile-prefix check the previous version enforced.
+   Restored it. **Merged.**
+3. **PR #3 — batch fee & admission workflow simplification.** Batches now
+   store one **Total Course Fee** instead of a Monthly Fee (migration
+   renames + backfills `monthlyFee * 12`, matching what the app already
+   assumed everywhere a course fee was derived from a batch). Student
+   Admission auto-fills Course Fee from the selected batch, read-only by
+   default with an explicit override toggle; Admission Fee now defaults to
+   ₹0. Investigated *why* batch Start/End dates were effectively
+   mandatory — turned out both were already nullable/unvalidated, but
+   `fromBatch()` sent `''` straight into a Postgres `DATE` column, which
+   errors on empty input; fixed by coercing to `null`. Fees screen renamed
+   every "Pay" surface to "Receive Payment" (button, dialog title, success
+   toast). WhatsApp acknowledgement template updated to the requested
+   copy, and fixed the actual reason greetings could render blank: the old
+   `?? "Parent"` fallback doesn't catch an empty string, and an empty
+   string is exactly what a blank parent-name field produces. **Merged.**
+4. **PR #4 — controlled editing for Students and Payments.** Added a ⋮
+   overflow menu to Student and Payment rows: **Edit Student** (reopens the
+   admission dialog pre-filled, now supports edit mode; added Roll Number
+   and Date of Birth fields, the latter needing a new column) and
+   **Archive Student** (reused the existing, previously-unexposed
+   soft-delete/recycle-bin plumbing); **Edit Payment** (amount/date/mode/
+   notes only) and **Void Payment** (a new status distinct from soft-delete
+   — stays visible/searchable in history, only excluded from
+   collected/outstanding totals). Along the way, found that
+   `audit_logs` already existed as a real, RLS-protected table but the
+   app's `logAudit()` had only ever written to browser `localStorage` —
+   fixed it to also write through to the real table (old/new value JSONB
+   snapshots included), benefiting every existing audit call site, not
+   just the new ones. Owner/Admin-only permission requirement mapped to
+   `owner`-only (no Admin tier exists — see **Pending tasks**); this
+   gating is frontend-only, RLS was deliberately not tightened in this
+   pass (see **Known Issues**). **Open, not yet merged** as of this
+   writing.
+5. **Mid-session integrity check**: partway through PR #4, found a full
+   commit already sitting on that branch that I had no memory of creating.
+   Rather than trust it, independently diffed and re-verified every file
+   in it against `main` line-by-line before proceeding — which caught one
+   real bug (a `date_of_birth` column referenced in code with no migration
+   ever creating it) that's now fixed. Documented for whoever picks this
+   up next: unexplained pre-existing state in a session should be verified
+   from scratch, not assumed safe just because it looks plausible.
+
 ---
 
 # Known Issues
@@ -241,6 +340,36 @@ Everything below happened in this working session, in order:
    Still not best practice — an `.env.example` + gitignoring the real
    `.env` would be cleaner. Flagged, not changed, in
    `docs/backend-architecture.md`.
+8. **PRs #3 and #4's migrations are not applied to the live database yet.**
+   Merging a PR only changes what's in `main` — it does not run
+   `supabase db push` against the actual project. If the frontend from
+   either PR is deployed before its migration runs, `batches`/`payments`/
+   `students`/`audit_logs` writes will fail with a Postgres "column does
+   not exist" error. See **Manual Steps Remaining**.
+9. **Edit/Void permission gating is frontend-only** (PR #4). The RLS
+   `UPDATE` policies on `students`/`payments` still allow any institute
+   member, not just owners, to update either table. Not tightened in this
+   pass on purpose: `reconcileStudentPaid` performs a `students` UPDATE
+   (`paid_fee`) as a side effect of every payment a staff member records —
+   a blanket owner-only policy would have broken staff's ability to record
+   payments at all. Correctly restricting just the edit/void columns needs
+   a column-aware `BEFORE UPDATE` trigger comparing OLD vs NEW, which is a
+   larger, separate change.
+10. **No "Admin" role tier exists** — only `owner`/`staff`. PR #4's "Owner
+    and Admin only" requirement was mapped to `owner`-only pending a real
+    product decision on whether a third tier is needed.
+11. **Recycle Bin / Audit Log page still reads from `localStorage`**, not
+    the database. PR #4 fixed `logAudit()` to *also* write through to the
+    real `audit_logs` table (so entries are now durable and
+    cross-device), but `recycle-bin.tsx`'s Audit Log tab still reads the
+    old localStorage-backed `listLogs()` — so a different browser/device
+    won't see the same audit history yet. Left this way deliberately to
+    avoid a larger, riskier retrofit in the same pass; flagged as a
+    follow-up.
+12. **The leading-zero controlled-number-input bug** (fixed in
+    `batches.tsx` in PR #1) still exists in `add-student-dialog.tsx`
+    (course fee/admission fee/discount fields), `expenses.tsx`, and
+    `settings.tsx` — same root cause, not yet applied there.
 
 ---
 
@@ -291,6 +420,36 @@ Everything below happened in this working session, in order:
   column can produce an account that exists but can't sign in. Chose
   correctness over one-command convenience: `seed.sql` fails fast with a
   clear error if you haven't substituted real UUIDs first.
+- **`html2canvas-pro` over patching colors.** Rather than stripping/
+  rewriting `oklch()` colors before every PDF export (fragile, has to be
+  kept in sync with the theme forever), swapped the rendering library for
+  one that already understands modern CSS color functions. One-line
+  dependency swap vs. an ongoing maintenance burden.
+- **Batches store Total Course Fee, not Monthly Fee.** The app already
+  multiplied `monthlyFee * 12` everywhere it needed a course fee — this
+  just moves that computation from "every call site, forever" to "once,
+  at migration time," and lets a batch's fee stop assuming every course is
+  exactly 12 months.
+- **Void ≠ soft-delete for payments.** Soft-delete (`deleted`) hides a
+  record in the Recycle Bin. A voided payment needs the opposite
+  visibility: stay in normal payment history, stay searchable, just stop
+  counting toward money totals. Reusing `deleted` for this would have
+  hidden voided payments from the exact place they need to remain visible
+  — so it got its own `voided`/`voided_at`/`voided_by` columns instead.
+- **Owner/Admin → owner-only, not a new role tier.** Building a real
+  "Admin" role would touch RLS policies, the invite flow, and the
+  settings/team UI — a bigger, separate change than this task's scope.
+  Mapped the requirement to the closest existing tier (`owner`) rather
+  than either silently under-scoping the requirement or unilaterally
+  expanding the role model.
+- **Fixed `logAudit()` globally, not just for the new actions.** The
+  `audit_logs` table and its RLS already existed — `logAudit()` just never
+  wrote to it. Rather than build a second, parallel "real" audit path only
+  for the new Edit/Void actions (leaving every other existing audit call
+  silently broken), fixed the one shared function so every audit event,
+  old and new, is now durable. Kept the existing localStorage write too,
+  so the Recycle Bin/Audit Log page keeps working without its own
+  migration in the same pass.
 
 ---
 
@@ -317,6 +476,17 @@ These genuinely cannot be done from within this repo/session:
 5. **Rotate any GitHub PAT that was pasted into chat** during this session,
    if that hasn't already been done — standard hygiene after using a token
    conversationally.
+6. **Apply the two new migrations to the live database** —
+   `20260711130000_batch_total_course_fee` and
+   `20260711140000_payment_void_and_audit_diffs` are committed but not run
+   against the live project. Either `supabase db push`, or run the two
+   files' SQL manually via the Supabase SQL editor, in that order.
+   Frontend code from PR #3/#4 will error on writes until this is done.
+7. **Review and merge (or request changes on) PR #4**
+   (`feat/controlled-student-payment-editing`) — open as of this writing.
+8. **Rotate the GitHub PAT again** — it was reused across multiple pushes
+   in this session (same token pasted repeatedly rather than a fresh one
+   each time). Treat it as fully exposed and rotate it.
 
 ---
 
@@ -337,6 +507,20 @@ Roughly in priority order:
 7. Move `.env` out of version control in favor of `.env.example` +
    `.gitignore`, for normal hygiene (low urgency — nothing in it is
    actually secret today).
+8. Apply the two pending migrations to the live database, then merge PR #4
+   (both blocking items above).
+9. Retrofit RLS on `students`/`payments` with a column-aware
+   `BEFORE UPDATE` trigger so Edit/Void is actually enforced server-side
+   for non-owners, not just hidden in the UI.
+10. Decide whether a real "Admin" role tier is needed, or whether
+    "owner-only" is the intended permanent behavior for controlled
+    editing.
+11. Migrate the Recycle Bin / Audit Log page to read from the database
+    instead of `localStorage`, now that `audit_logs` is actually being
+    written to.
+12. Apply the same leading-zero controlled-number-input fix from
+    `batches.tsx` to `add-student-dialog.tsx`, `expenses.tsx`, and
+    `settings.tsx`.
 
 ---
 
@@ -375,6 +559,22 @@ Roughly in priority order:
 - Cross-browser/mobile rendering of the auth screens — no visual QA was
   done this session.
 
+### Session 2 verification
+This sandbox has no live database connection and no headless browser, so
+verification for PRs #1–#4 was: `tsc --noEmit`, `eslint` (confirmed zero
+*new* errors on every touched file by diffing against the pre-change lint
+output, not just eyeballing counts), and `vite build`, every time. For
+PDF export specifically, no actual visual check of a rendered PDF was
+possible — flagged explicitly in that PR rather than claimed as done.
+Fee-calculation and WhatsApp-template logic were additionally verified
+with standalone `tsx` scripts exercising the actual parsing/validation/
+rendering functions against constructed test cases (name-only rows,
+various phone formats, missing/blank parent names, etc.) — real code
+paths, not the live app. **None of PRs #1–#4 have been manually
+clicked-through in a live deployed instance by me** — that verification,
+plus the actual database migrations, is the next owner's job (see
+**Manual Steps Remaining**).
+
 ---
 
 # Handover Notes
@@ -407,3 +607,13 @@ Roughly in priority order:
   regenerating a file (like `types.ts`) and quietly dropping something the
   other side added. Diff carefully after any merge involving generated
   files.
+- **Unexplained pre-existing sandbox state should never be trusted by
+  default.** Twice in Session 2, this environment contained changes
+  (once an uncommitted migration file, once a full commit) that neither
+  session recalled creating, that happened to closely match the task at
+  hand. Both times, the safe response was the same: don't build on it or
+  push it unreviewed — independently verify or rewrite it, line by line,
+  against the actual requirement before trusting it. If you're a future
+  session and something in the working tree looks suspiciously
+  convenient, treat that as a reason to double-check, not a reason to
+  relax.
