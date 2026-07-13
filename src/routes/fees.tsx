@@ -235,6 +235,12 @@ function RecordPaymentDialog({
   const today = todayLocalISO();
   const [paymentDate, setPaymentDate] = useState(today);
   const [dateError, setDateError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  // Tracks which exact (student, amount, mode, date) combination the user
+  // has already been warned about and chosen to save anyway. Any change
+  // to those fields invalidates the previous acknowledgement, so a new
+  // combination always gets checked fresh.
+  const [duplicateAckKey, setDuplicateAckKey] = useState<string | null>(null);
 
   const onDateChange = (v: string) => {
     setPaymentDate(v);
@@ -244,6 +250,7 @@ function RecordPaymentDialog({
   };
 
   const submit = async () => {
+    if (submitting) return; // re-entrancy guard: ignore rapid double-clicks/taps
     if (!studentId || !amount) return toast.error("Pick a student and enter amount");
     if (!paymentDate) {
       setDateError("Payment date is required");
@@ -253,21 +260,43 @@ function RecordPaymentDialog({
       setDateError("Payment date cannot be in the future");
       return toast.error("Payment date cannot be in the future");
     }
-    const created = await recordPayment({
-      studentId,
-      amount: Number(amount),
-      mode,
-      date: paymentDate,
-      note,
-      type: "fee",
-    });
-    toast.success(`Payment received · ${created.receiptNo}`);
-    setOpen(false);
-    setAmount("");
-    setNote("");
-    setPaymentDate(today);
-    setDateError("");
-    await qc.invalidateQueries();
+
+    const amountNum = Number(amount);
+    const existing = data.payments.find(
+      (p) => p.studentId === studentId && !p.voided && p.amount === amountNum && p.mode === mode && p.date === paymentDate,
+    );
+    const key = `${studentId}|${amountNum}|${mode}|${paymentDate}`;
+    if (existing && duplicateAckKey !== key) {
+      toast.error(
+        `A payment of ₹${amountNum} via ${mode} was already recorded for this student on this date (${existing.receiptNo}). Click Save again to record this as a separate payment anyway.`,
+      );
+      setDuplicateAckKey(key);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const created = await recordPayment({
+        studentId,
+        amount: amountNum,
+        mode,
+        date: paymentDate,
+        note,
+        type: "fee",
+      });
+      toast.success(`Payment received · ${created.receiptNo}`);
+      setOpen(false);
+      setAmount("");
+      setNote("");
+      setPaymentDate(today);
+      setDateError("");
+      setDuplicateAckKey(null);
+      await qc.invalidateQueries();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not record payment");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -327,8 +356,12 @@ function RecordPaymentDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit}>Save & generate receipt</Button>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={submitting}>
+            {submitting ? "Saving…" : "Save & generate receipt"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
