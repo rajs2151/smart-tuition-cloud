@@ -32,6 +32,13 @@ export const DEFAULT_RECEIPT: ReceiptConfig = {
   showGst: true,
   showLogo: true,
   showFooter: true,
+  // Receipt Contact Details overrides. null = "Use Institute Information"
+  // (the default) — the receipt falls back to the Institute tab's values.
+  // These are intentionally the only new fields: no separate boolean flags,
+  // so there's nothing that can drift out of sync with the override text.
+  phoneOverride: null,
+  emailOverride: null,
+  websiteOverride: null,
 };
 
 export const DEFAULT_MASTER: MasterSettings = {
@@ -80,6 +87,9 @@ export function hydrateSettingsFromDb(row: any) {
       showGst: !!row.receipt_show_gst,
       showLogo: row.receipt_show_logo ?? true,
       showFooter: row.receipt_show_footer ?? true,
+      phoneOverride: row.receipt_phone_override ?? null,
+      emailOverride: row.receipt_email_override ?? null,
+      websiteOverride: row.receipt_website_override ?? null,
     },
     master: {
       standards: (row.master_standards ?? DEFAULT_MASTER.standards) as Standard[],
@@ -131,6 +141,9 @@ export function setReceiptConfig(patch: Partial<ReceiptConfig>) {
   if ("showGst" in patch) dbPatch.receipt_show_gst = patch.showGst;
   if ("showLogo" in patch) dbPatch.receipt_show_logo = patch.showLogo;
   if ("showFooter" in patch) dbPatch.receipt_show_footer = patch.showFooter;
+  if ("phoneOverride" in patch) dbPatch.receipt_phone_override = patch.phoneOverride;
+  if ("emailOverride" in patch) dbPatch.receipt_email_override = patch.emailOverride;
+  if ("websiteOverride" in patch) dbPatch.receipt_website_override = patch.websiteOverride;
   if (Object.keys(dbPatch).length) void pushInstituteUpdate(dbPatch);
 }
 

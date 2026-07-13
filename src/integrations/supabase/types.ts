@@ -195,13 +195,16 @@ export type Database = {
           name: string
           phone: string
           receipt_authorized_signatory: string
+          receipt_email_override: string | null
           receipt_footer_text: string
           receipt_next_number: number
+          receipt_phone_override: string | null
           receipt_prefix: string
           receipt_show_footer: boolean
           receipt_show_gst: boolean
           receipt_show_logo: boolean
           receipt_terms: string
+          receipt_website_override: string | null
           subscription_status: string
           updated_at: string
           website: string | null
@@ -221,13 +224,16 @@ export type Database = {
           name: string
           phone?: string
           receipt_authorized_signatory?: string
+          receipt_email_override?: string | null
           receipt_footer_text?: string
           receipt_next_number?: number
+          receipt_phone_override?: string | null
           receipt_prefix?: string
           receipt_show_footer?: boolean
           receipt_show_gst?: boolean
           receipt_show_logo?: boolean
           receipt_terms?: string
+          receipt_website_override?: string | null
           subscription_status?: string
           updated_at?: string
           website?: string | null
@@ -247,13 +253,16 @@ export type Database = {
           name?: string
           phone?: string
           receipt_authorized_signatory?: string
+          receipt_email_override?: string | null
           receipt_footer_text?: string
           receipt_next_number?: number
+          receipt_phone_override?: string | null
           receipt_prefix?: string
           receipt_show_footer?: boolean
           receipt_show_gst?: boolean
           receipt_show_logo?: boolean
           receipt_terms?: string
+          receipt_website_override?: string | null
           subscription_status?: string
           updated_at?: string
           website?: string | null

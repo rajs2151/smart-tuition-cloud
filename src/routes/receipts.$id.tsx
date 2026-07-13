@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { getStudent, listBatches, listPayments } from "@/lib/data/adapter";
 import { fmtDate, inr } from "@/lib/format";
 import { useSettings } from "@/lib/settings/store";
+import { getEffectiveReceiptContact } from "@/lib/settings/receipt-contact";
 import { exportElementToPdf } from "@/lib/pdf/export";
 import { getMessaging } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
@@ -52,6 +53,7 @@ function ReceiptDetail() {
   const { payment, student, batch } = data;
   if (!student) return null;
 
+  const contact = getEffectiveReceiptContact(institute, cfg);
   const billed = student.totalFee - student.discount;
   const balance = Math.max(0, billed - student.paidFee);
   const receiptRef = useRef<HTMLDivElement>(null);
@@ -125,8 +127,9 @@ function ReceiptDetail() {
                   {cfg.showGst && institute.gstNumber ? ` · GST: ${institute.gstNumber}` : ""}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {institute.phone} · {institute.email}
-                  {institute.website ? ` · ${institute.website}` : ""}
+                  {contact.phone}
+                  {contact.email ? ` · ${contact.email}` : ""}
+                  {contact.website ? ` · ${contact.website}` : ""}
                 </p>
               </div>
             </div>

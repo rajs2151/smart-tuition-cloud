@@ -23,6 +23,7 @@ import {
   useSettings,
 } from "@/lib/settings/store";
 import type { MasterSettings } from "@/lib/data/types";
+import { getEffectiveReceiptContact } from "@/lib/settings/receipt-contact";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({ meta: [{ title: "Settings — Vidyafee" }] }),
@@ -125,89 +126,205 @@ function InstituteTab() {
 }
 
 function ReceiptTab() {
-  const { receipt } = useSettings();
+  const { institute, receipt } = useSettings();
   const [form, setForm] = useState(receipt);
+
+  // Whether each field should follow the Institute tab. Derived once from
+  // whatever was saved (an existing override means the box starts
+  // unchecked) but kept as its own local toggle so unchecking a field
+  // reveals an empty, editable input immediately — it doesn't need to
+  // persist anywhere, since on save we simply null out the override for
+  // any field where this is true.
+  const [useInstitutePhone, setUseInstitutePhone] = useState(!receipt.phoneOverride);
+  const [useInstituteEmail, setUseInstituteEmail] = useState(!receipt.emailOverride);
+  const [useInstituteWebsite, setUseInstituteWebsite] = useState(!receipt.websiteOverride);
+
   const save = () => {
-    setReceiptConfig(form);
+    const patch: Partial<typeof form> = {
+      ...form,
+      phoneOverride: useInstitutePhone ? null : form.phoneOverride?.trim() || null,
+      emailOverride: useInstituteEmail ? null : form.emailOverride?.trim() || null,
+      websiteOverride: useInstituteWebsite ? null : form.websiteOverride?.trim() || null,
+    };
+    setReceiptConfig(patch);
     toast.success("Receipt configuration saved");
   };
 
+  const preview = getEffectiveReceiptContact(institute, {
+    ...form,
+    phoneOverride: useInstitutePhone ? null : form.phoneOverride,
+    emailOverride: useInstituteEmail ? null : form.emailOverride,
+    websiteOverride: useInstituteWebsite ? null : form.websiteOverride,
+  });
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Receipt configuration</CardTitle>
-        <p className="text-xs text-muted-foreground">
-          All receipts generated for this institute will use these settings.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Receipt prefix</Label>
-            <Input
-              value={form.prefix}
-              onChange={(e) => setForm({ ...form, prefix: e.target.value.toUpperCase() })}
-              placeholder="REC / FEE / INV"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Next receipt number</Label>
-            <Input
-              type="number"
-              value={form.nextNumber}
-              onChange={(e) => setForm({ ...form, nextNumber: Number(e.target.value) })}
-            />
-          </div>
-          <div className="sm:col-span-2 space-y-1.5">
-            <Label>Authorized signatory name</Label>
-            <Input
-              value={form.authorizedSignatory}
-              onChange={(e) => setForm({ ...form, authorizedSignatory: e.target.value })}
-            />
-          </div>
-          <div className="sm:col-span-2 space-y-1.5">
-            <Label>Footer text</Label>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Receipt Contact Details</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            By default, receipts use the phone, email and website from the Institute tab. Turn any
+            of these off to show something different on receipts only — the Institute tab stays
+            unchanged either way.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <ContactOverrideField
+            label="Use Institute Contact Number"
+            useInstitute={useInstitutePhone}
+            onUseInstituteChange={setUseInstitutePhone}
+            preview={preview.phone || "—"}
+          >
+            <Label>Phone Numbers</Label>
             <Textarea
               rows={2}
-              value={form.footerText}
-              onChange={(e) => setForm({ ...form, footerText: e.target.value })}
+              disabled={useInstitutePhone}
+              value={form.phoneOverride ?? ""}
+              onChange={(e) => setForm({ ...form, phoneOverride: e.target.value })}
+              placeholder={"8637769576\n9021123456"}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              One per line, or comma-separated. Shown on receipts as: 8637769576 • 9021123456
+            </p>
+          </ContactOverrideField>
+
+          <Separator />
+
+          <ContactOverrideField
+            label="Use Institute Email"
+            useInstitute={useInstituteEmail}
+            onUseInstituteChange={setUseInstituteEmail}
+            preview={preview.email || "—"}
+          >
+            <Label>Email</Label>
+            <Input
+              disabled={useInstituteEmail}
+              value={form.emailOverride ?? ""}
+              onChange={(e) => setForm({ ...form, emailOverride: e.target.value })}
+              placeholder="accounts@coaching.com"
+            />
+          </ContactOverrideField>
+
+          <Separator />
+
+          <ContactOverrideField
+            label="Use Institute Website"
+            useInstitute={useInstituteWebsite}
+            onUseInstituteChange={setUseInstituteWebsite}
+            preview={preview.website || "—"}
+          >
+            <Label>Website</Label>
+            <Input
+              disabled={useInstituteWebsite}
+              value={form.websiteOverride ?? ""}
+              onChange={(e) => setForm({ ...form, websiteOverride: e.target.value })}
+              placeholder="www.coaching.com"
+            />
+          </ContactOverrideField>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Receipt configuration</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            All receipts generated for this institute will use these settings.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Receipt prefix</Label>
+              <Input
+                value={form.prefix}
+                onChange={(e) => setForm({ ...form, prefix: e.target.value.toUpperCase() })}
+                placeholder="REC / FEE / INV"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Next receipt number</Label>
+              <Input
+                type="number"
+                value={form.nextNumber}
+                onChange={(e) => setForm({ ...form, nextNumber: Number(e.target.value) })}
+              />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label>Authorized signatory name</Label>
+              <Input
+                value={form.authorizedSignatory}
+                onChange={(e) => setForm({ ...form, authorizedSignatory: e.target.value })}
+              />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label>Footer text</Label>
+              <Textarea
+                rows={2}
+                value={form.footerText}
+                onChange={(e) => setForm({ ...form, footerText: e.target.value })}
+              />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label>Terms &amp; conditions</Label>
+              <Textarea
+                rows={4}
+                value={form.termsAndConditions}
+                onChange={(e) => setForm({ ...form, termsAndConditions: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Toggle
+              label="Show GST number"
+              checked={form.showGst}
+              onCheckedChange={(v) => setForm({ ...form, showGst: v })}
+            />
+            <Toggle
+              label="Show institute logo"
+              checked={form.showLogo}
+              onCheckedChange={(v) => setForm({ ...form, showLogo: v })}
+            />
+            <Toggle
+              label="Show footer notes"
+              checked={form.showFooter}
+              onCheckedChange={(v) => setForm({ ...form, showFooter: v })}
             />
           </div>
-          <div className="sm:col-span-2 space-y-1.5">
-            <Label>Terms &amp; conditions</Label>
-            <Textarea
-              rows={4}
-              value={form.termsAndConditions}
-              onChange={(e) => setForm({ ...form, termsAndConditions: e.target.value })}
-            />
+
+          <div className="flex justify-end">
+            <Button onClick={save}>Save receipt settings</Button>
           </div>
-        </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
-        <Separator />
-
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Toggle
-            label="Show GST number"
-            checked={form.showGst}
-            onCheckedChange={(v) => setForm({ ...form, showGst: v })}
-          />
-          <Toggle
-            label="Show institute logo"
-            checked={form.showLogo}
-            onCheckedChange={(v) => setForm({ ...form, showLogo: v })}
-          />
-          <Toggle
-            label="Show footer notes"
-            checked={form.showFooter}
-            onCheckedChange={(v) => setForm({ ...form, showFooter: v })}
-          />
-        </div>
-
-        <div className="flex justify-end">
-          <Button onClick={save}>Save receipt settings</Button>
-        </div>
-      </CardContent>
-    </Card>
+function ContactOverrideField({
+  label,
+  useInstitute,
+  onUseInstituteChange,
+  preview,
+  children,
+}: {
+  label: string;
+  useInstitute: boolean;
+  onUseInstituteChange: (v: boolean) => void;
+  preview: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <Label className="text-sm">{label}</Label>
+        <Switch checked={useInstitute} onCheckedChange={onUseInstituteChange} />
+      </div>
+      <div className="space-y-1.5">{children}</div>
+      <p className="text-[11px] text-muted-foreground">On receipts: {preview}</p>
+    </div>
   );
 }
 

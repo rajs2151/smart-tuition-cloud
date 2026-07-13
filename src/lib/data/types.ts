@@ -142,6 +142,12 @@ export type ReceiptConfig = {
   showGst: boolean;
   showLogo: boolean;
   showFooter: boolean;
+  // Receipt-specific contact overrides. null = "use the Institute tab's
+  // value" (the default) — see src/lib/settings/receipt-contact.ts for
+  // the single resolver that applies this fallback everywhere it matters.
+  phoneOverride: string | null;
+  emailOverride: string | null;
+  websiteOverride: string | null;
 };
 
 export type MasterSettings = {
