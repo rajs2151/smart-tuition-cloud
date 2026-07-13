@@ -23,7 +23,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { listPayments, listStudents, recordPayment } from "@/lib/data/adapter";
-import { fmtDate, initials, inr } from "@/lib/format";
+import { fmtDate, initials, inr, todayLocalISO } from "@/lib/format";
 import type { Payment } from "@/lib/data/types";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { getMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
@@ -73,7 +73,7 @@ function FeesPage() {
   const totals = useMemo(() => {
     const billed = data.students.reduce((a, s) => a + (s.totalFee - s.discount), 0);
     const collected = data.students.reduce((a, s) => a + s.paidFee, 0);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocalISO();
     const todayCol = data.payments.filter((p) => p.date === today && !p.voided).reduce((a, p) => a + p.amount, 0);
     return { billed, collected, due: billed - collected, todayCol };
   }, [data]);
@@ -232,14 +232,32 @@ function RecordPaymentDialog({
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState<Payment["mode"]>("UPI");
   const [note, setNote] = useState("");
+  const today = todayLocalISO();
+  const [paymentDate, setPaymentDate] = useState(today);
+  const [dateError, setDateError] = useState("");
+
+  const onDateChange = (v: string) => {
+    setPaymentDate(v);
+    if (!v) setDateError("Payment date is required");
+    else if (v > today) setDateError("Payment date cannot be in the future");
+    else setDateError("");
+  };
 
   const submit = async () => {
     if (!studentId || !amount) return toast.error("Pick a student and enter amount");
+    if (!paymentDate) {
+      setDateError("Payment date is required");
+      return toast.error("Payment date is required");
+    }
+    if (paymentDate > today) {
+      setDateError("Payment date cannot be in the future");
+      return toast.error("Payment date cannot be in the future");
+    }
     const created = await recordPayment({
       studentId,
       amount: Number(amount),
       mode,
-      date: new Date().toISOString().slice(0, 10),
+      date: paymentDate,
       note,
       type: "fee",
     });
@@ -247,6 +265,8 @@ function RecordPaymentDialog({
     setOpen(false);
     setAmount("");
     setNote("");
+    setPaymentDate(today);
+    setDateError("");
     await qc.invalidateQueries();
   };
 
@@ -289,6 +309,17 @@ function RecordPaymentDialog({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Payment Date</Label>
+            <Input
+              type="date"
+              value={paymentDate}
+              max={today}
+              onChange={(e) => onDateChange(e.target.value)}
+              aria-invalid={!!dateError}
+            />
+            {dateError && <p className="text-xs text-destructive">{dateError}</p>}
           </div>
           <div className="space-y-1.5">
             <Label>Note (optional)</Label>
