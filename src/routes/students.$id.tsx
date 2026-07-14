@@ -78,9 +78,17 @@ function StudentDetail() {
   });
   const { student: s, payments, batches } = data;
   const batch = batches.find((b) => b.id === s.batchId);
+  // Collected is computed directly from this student's payments (already
+  // loaded on this page) rather than trusted from student.paidFee. That
+  // column is a cache reconciled by a best-effort background step after
+  // each payment — if that step ever fails silently, paidFee can drift
+  // out of sync with the actual ledger while the Payment Timeline (which
+  // reads the same payments) still looks correct. Deriving from payments
+  // here means this page is always consistent with its own timeline.
+  const collected = payments.filter((p) => !p.voided).reduce((sum, p) => sum + p.amount, 0);
   const billed = s.totalFee - s.discount;
-  const due = Math.max(0, billed - s.paidFee);
-  const pct = Math.round((s.paidFee / Math.max(1, billed)) * 100);
+  const due = Math.max(0, billed - collected);
+  const pct = Math.round((collected / Math.max(1, billed)) * 100);
   const { institute } = useSettings();
   const admissionRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
@@ -186,7 +194,7 @@ function StudentDetail() {
               <FormRow label="Admission fee" value={inr(s.admissionFee)} />
               <FormRow label="Discount" value={inr(s.discount)} />
               <FormRow label="Total payable" value={inr(billed)} />
-              <FormRow label="Amount paid" value={inr(s.paidFee)} />
+              <FormRow label="Amount paid" value={inr(collected)} />
               <FormRow label="Balance" value={inr(due)} />
             </tbody>
           </table>
@@ -250,7 +258,7 @@ function StudentDetail() {
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                   <Stat label="Total fee" value={inr(s.totalFee)} />
                   <Stat label="Discount" value={inr(s.discount)} tone="info" />
-                  <Stat label="Collected" value={inr(s.paidFee)} tone="success" />
+                  <Stat label="Collected" value={inr(collected)} tone="success" />
                   <Stat label="Due" value={inr(due)} tone={due > 0 ? "danger" : "success"} />
                 </div>
                 <div>
