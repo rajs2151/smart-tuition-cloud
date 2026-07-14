@@ -43,12 +43,28 @@ function FeesPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"all" | "due" | "paid">("all");
 
+  // Per-student Collected, derived from the payments ledger (already loaded
+  // on this page) rather than trusted from student.paidFee. That column is
+  // a cache reconciled by a best-effort background step after each payment;
+  // if that step ever fails silently, paidFee can drift out of sync with
+  // the actual ledger. Computing it here keeps this page consistent with
+  // the Student Details page, which was fixed the same way.
+  const collectedByStudent = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of data.payments) {
+      if (p.voided) continue;
+      map.set(p.studentId, (map.get(p.studentId) ?? 0) + p.amount);
+    }
+    return map;
+  }, [data.payments]);
+
   const enriched = useMemo(() => {
     return data.students
       .map((s) => {
+        const paidFee = collectedByStudent.get(s.id) ?? 0;
         const billed = s.totalFee - s.discount;
-        const due = Math.max(0, billed - s.paidFee);
-        return { ...s, billed, due };
+        const due = Math.max(0, billed - paidFee);
+        return { ...s, paidFee, billed, due };
       })
       .filter((s) => {
         if (tab === "due" && s.due === 0) return false;
@@ -58,11 +74,11 @@ function FeesPage() {
         return s.name.toLowerCase().includes(q) || s.rollNo.toLowerCase().includes(q);
       })
       .sort((a, b) => b.due - a.due);
-  }, [data.students, search, tab]);
+  }, [data.students, collectedByStudent, search, tab]);
 
   const totals = useMemo(() => {
     const billed = data.students.reduce((a, s) => a + (s.totalFee - s.discount), 0);
-    const collected = data.students.reduce((a, s) => a + s.paidFee, 0);
+    const collected = data.payments.filter((p) => !p.voided).reduce((a, p) => a + p.amount, 0);
     const today = todayLocalISO();
     const todayCol = data.payments.filter((p) => p.date === today && !p.voided).reduce((a, p) => a + p.amount, 0);
     return { billed, collected, due: billed - collected, todayCol };

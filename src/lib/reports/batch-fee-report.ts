@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 
-import type { Batch, Student } from "@/lib/data/types";
+import type { Batch, Payment, Student } from "@/lib/data/types";
 import { todayLocalISO } from "@/lib/format";
 
 export interface BatchFeeReportRow {
@@ -16,27 +16,49 @@ export interface BatchFeeReportRow {
  * (`src/routes/fees.tsx`: `billed = totalFee - discount`,
  * `due = Math.max(0, billed - paidFee)`) — kept here as one function so
  * this report can never drift from what the rest of the app shows for a
- * student's dues.
+ * student's dues. paidFee is passed in explicitly (derived from the
+ * payments ledger by the caller) rather than read from student.paidFee —
+ * see buildBatchFeeReportRows.
  */
 export function computeRemainingFee(
-  student: Pick<Student, "totalFee" | "discount" | "paidFee">,
+  student: Pick<Student, "totalFee" | "discount">,
+  paidFee: number,
 ): number {
   const billed = student.totalFee - student.discount;
-  return Math.max(0, billed - student.paidFee);
+  return Math.max(0, billed - paidFee);
 }
 
 /**
  * Builds the report rows for one batch, sorted by highest remaining
  * fees first (ties broken by name for a stable, predictable order).
+ *
+ * Paid Fee is derived from the payments ledger (excluding voided), not
+ * from the cached student.paidFee column. That column is reconciled by
+ * a best-effort background step after each payment; if it ever fails
+ * silently, paidFee can drift out of sync with the actual ledger. This
+ * keeps the report consistent with the Fees list and Student Details
+ * page, both derived the same way.
  */
-export function buildBatchFeeReportRows(students: Student[], batchId: string): BatchFeeReportRow[] {
+export function buildBatchFeeReportRows(
+  students: Student[],
+  payments: Payment[],
+  batchId: string,
+): BatchFeeReportRow[] {
+  const collectedByStudent = new Map<string, number>();
+  for (const p of payments) {
+    if (p.voided) continue;
+    collectedByStudent.set(p.studentId, (collectedByStudent.get(p.studentId) ?? 0) + p.amount);
+  }
   return students
     .filter((s) => s.batchId === batchId)
-    .map((s) => ({
-      studentName: s.name,
-      paidFee: s.paidFee,
-      remainingFee: computeRemainingFee(s),
-    }))
+    .map((s) => {
+      const paidFee = collectedByStudent.get(s.id) ?? 0;
+      return {
+        studentName: s.name,
+        paidFee,
+        remainingFee: computeRemainingFee(s, paidFee),
+      };
+    })
     .sort((a, b) => b.remainingFee - a.remainingFee || a.studentName.localeCompare(b.studentName));
 }
 
@@ -73,12 +95,16 @@ const HEADER_ROW = 3; // one blank row between the title and the table
 
 /**
  * Generates the "Batch Fee Report" workbook for one batch and triggers
- * a browser download. Pass in the full student list already loaded for
- * the Batches page — this function filters it down to the given batch,
- * so no extra fetch/query is made here.
+ * a browser download. Pass in the full student and payment lists already
+ * loaded for the Batches page — this function filters them down to the
+ * given batch, so no extra fetch/query is made here.
  */
-export async function downloadBatchFeeReport(batch: Batch, allStudents: Student[]): Promise<void> {
-  const rows = buildBatchFeeReportRows(allStudents, batch.id);
+export async function downloadBatchFeeReport(
+  batch: Batch,
+  allStudents: Student[],
+  allPayments: Payment[],
+): Promise<void> {
+  const rows = buildBatchFeeReportRows(allStudents, allPayments, batch.id);
 
   if (rows.length === 0) {
     throw new Error("No students in this batch yet.");

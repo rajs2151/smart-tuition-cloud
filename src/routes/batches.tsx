@@ -20,12 +20,12 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import {
-  createBatch, deleteBatch, listBatches, listStudents, updateBatch,
+  createBatch, deleteBatch, listBatches, listPayments, listStudents, updateBatch,
 } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
 import { inr, fmtDate } from "@/lib/format";
 import { sanitizeNumberInput } from "@/lib/number-input";
-import type { Batch, BatchType, Standard, Board, Medium, ExamCategory, Student } from "@/lib/data/types";
+import type { Batch, BatchType, Standard, Board, Medium, ExamCategory, Payment, Student } from "@/lib/data/types";
 import { ImportStudentsDialog } from "@/components/import-students-dialog";
 import { Upload } from "lucide-react";
 import { downloadBatchFeeReport } from "@/lib/reports/batch-fee-report";
@@ -35,6 +35,7 @@ const q = {
   queryFn: async () => ({
     batches: await listBatches(),
     students: await listStudents(),
+    payments: await listPayments(),
   }),
 };
 
@@ -117,7 +118,7 @@ function BatchesPage() {
                       </div>
                     </div>
 
-                    <DownloadFeeReportButton batch={b} students={data.students} />
+                    <DownloadFeeReportButton batch={b} students={data.students} payments={data.payments} />
                   </CardContent>
                 </Card>
               ))}
@@ -308,14 +309,22 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
   );
 }
 
-function DownloadFeeReportButton({ batch, students }: { batch: Batch; students: Student[] }) {
+function DownloadFeeReportButton({
+  batch,
+  students,
+  payments,
+}: {
+  batch: Batch;
+  students: Student[];
+  payments: Payment[];
+}) {
   const [loading, setLoading] = useState(false);
   const studentCount = students.filter((s) => s.batchId === batch.id).length;
 
   const handleDownload = async () => {
     setLoading(true);
     try {
-      await downloadBatchFeeReport(batch, students);
+      await downloadBatchFeeReport(batch, students, payments);
       toast.success("Fee report downloaded");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not generate the fee report");
