@@ -33,6 +33,7 @@ import { exportElementToPdf } from "@/lib/pdf/export";
 import { useSettings } from "@/lib/settings/store";
 import { getMessaging } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
+import { RecordPaymentDialog } from "@/components/record-payment-dialog";
 
 export const Route = createFileRoute("/students/$id")({
   loader: async ({ params, context }) => {
@@ -125,9 +126,15 @@ function StudentDetail() {
             <Button variant="outline" size="sm" onClick={onDownloadAdmission} disabled={downloading}>
               <Download className="h-4 w-4" /> {downloading ? "Generating…" : "Admission form PDF"}
             </Button>
-            <Button size="sm">
-              <Plus className="h-4 w-4" /> Record payment
-            </Button>
+            <RecordPaymentDialog
+              defaultStudentId={s.id}
+              payments={payments}
+              trigger={
+                <Button size="sm">
+                  <Plus className="h-4 w-4" /> Record payment
+                </Button>
+              }
+            />
             <Button size="sm" variant="outline" onClick={onWhatsAppReminder}>
               <MessageCircle className="h-4 w-4" /> Send WhatsApp reminder
             </Button>

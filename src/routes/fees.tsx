@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Search, IndianRupee, MessageCircle } from "lucide-react";
+import { Search, IndianRupee, MessageCircle } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,24 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { listPayments, listStudents, recordPayment } from "@/lib/data/adapter";
+import { listPayments, listStudents } from "@/lib/data/adapter";
 import { fmtDate, initials, inr, todayLocalISO } from "@/lib/format";
-import type { Payment } from "@/lib/data/types";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { getMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
 import { PaymentRowMenu } from "@/components/payment-row-menu";
+import { RecordPaymentDialog } from "@/components/record-payment-dialog";
 
 const q = {
   queryKey: ["fees-page"],
@@ -83,7 +73,7 @@ function FeesPage() {
       <AppHeader
         title="Fee Management"
         subtitle="Track collections, dues and record new payments"
-        actions={<RecordPaymentDialog />}
+        actions={<RecordPaymentDialog students={data.students} payments={data.payments} />}
       />
 
       <main className="flex-1 space-y-4 p-4 md:p-6">
@@ -162,9 +152,14 @@ function FeesPage() {
                       <MessageCircle className="h-4 w-4" />
                     </Button>
                   )}
-                  <RecordPaymentDialog defaultStudentId={s.id} trigger={
-                    <Button size="sm" title="Receive payment"><IndianRupee className="h-4 w-4" /> Receive Payment</Button>
-                  } />
+                  <RecordPaymentDialog
+                    defaultStudentId={s.id}
+                    students={data.students}
+                    payments={data.payments}
+                    trigger={
+                      <Button size="sm" title="Receive payment"><IndianRupee className="h-4 w-4" /> Receive Payment</Button>
+                    }
+                  />
                 </div>
               </div>
             ))}
@@ -215,155 +210,5 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone?:
         <p className={`mt-2 font-display text-xl font-bold ${cls}`}>{value}</p>
       </CardContent>
     </Card>
-  );
-}
-
-function RecordPaymentDialog({
-  defaultStudentId,
-  trigger,
-}: {
-  defaultStudentId?: string;
-  trigger?: React.ReactNode;
-}) {
-  const qc = useQueryClient();
-  const { data } = useSuspenseQuery(q);
-  const [open, setOpen] = useState(false);
-  const [studentId, setStudentId] = useState(defaultStudentId ?? "");
-  const [amount, setAmount] = useState("");
-  const [mode, setMode] = useState<Payment["mode"]>("UPI");
-  const [note, setNote] = useState("");
-  const today = todayLocalISO();
-  const [paymentDate, setPaymentDate] = useState(today);
-  const [dateError, setDateError] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  // Tracks which exact (student, amount, mode, date) combination the user
-  // has already been warned about and chosen to save anyway. Any change
-  // to those fields invalidates the previous acknowledgement, so a new
-  // combination always gets checked fresh.
-  const [duplicateAckKey, setDuplicateAckKey] = useState<string | null>(null);
-
-  const onDateChange = (v: string) => {
-    setPaymentDate(v);
-    if (!v) setDateError("Payment date is required");
-    else if (v > today) setDateError("Payment date cannot be in the future");
-    else setDateError("");
-  };
-
-  const submit = async () => {
-    if (submitting) return; // re-entrancy guard: ignore rapid double-clicks/taps
-    if (!studentId || !amount) return toast.error("Pick a student and enter amount");
-    if (!paymentDate) {
-      setDateError("Payment date is required");
-      return toast.error("Payment date is required");
-    }
-    if (paymentDate > today) {
-      setDateError("Payment date cannot be in the future");
-      return toast.error("Payment date cannot be in the future");
-    }
-
-    const amountNum = Number(amount);
-    const existing = data.payments.find(
-      (p) => p.studentId === studentId && !p.voided && p.amount === amountNum && p.mode === mode && p.date === paymentDate,
-    );
-    const key = `${studentId}|${amountNum}|${mode}|${paymentDate}`;
-    if (existing && duplicateAckKey !== key) {
-      toast.error(
-        `A payment of ₹${amountNum} via ${mode} was already recorded for this student on this date (${existing.receiptNo}). Click Save again to record this as a separate payment anyway.`,
-      );
-      setDuplicateAckKey(key);
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const created = await recordPayment({
-        studentId,
-        amount: amountNum,
-        mode,
-        date: paymentDate,
-        note,
-        type: "fee",
-      });
-      toast.success(`Payment received · ${created.receiptNo}`);
-      setOpen(false);
-      setAmount("");
-      setNote("");
-      setPaymentDate(today);
-      setDateError("");
-      setDuplicateAckKey(null);
-      await qc.invalidateQueries();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not record payment");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button><Plus className="h-4 w-4" /> Receive Payment</Button>
-        )}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Receive Payment</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Student</Label>
-            <Select value={studentId} onValueChange={setStudentId}>
-              <SelectTrigger><SelectValue placeholder="Select student" /></SelectTrigger>
-              <SelectContent>
-                {data.students.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name} · {s.rollNo}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Amount (₹)</Label>
-              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="5000" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Mode</Label>
-              <Select value={mode} onValueChange={(v) => setMode(v as Payment["mode"])}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(["Cash", "UPI", "Bank Transfer", "Card", "Cheque"] as const).map((m) => (
-                    <SelectItem key={m} value={m}>{m}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Payment Date</Label>
-            <Input
-              type="date"
-              value={paymentDate}
-              max={today}
-              onChange={(e) => onDateChange(e.target.value)}
-              aria-invalid={!!dateError}
-            />
-            {dateError && <p className="text-xs text-destructive">{dateError}</p>}
-          </div>
-          <div className="space-y-1.5">
-            <Label>Note (optional)</Label>
-            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Installment 3 of 6" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={submitting}>
-            {submitting ? "Saving…" : "Save & generate receipt"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
