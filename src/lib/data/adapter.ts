@@ -329,16 +329,35 @@ export async function listPaymentsByStudent(studentId: string): Promise<Payment[
   return (data ?? []).map(toPayment);
 }
 
+/**
+ * Recomputes and persists a student's cached paid_fee total from their
+ * non-deleted, non-voided payments. This is derived cache-maintenance —
+ * the payments table is the actual source of truth — so a failure here
+ * must never be reported as a failure of whatever payment mutation
+ * (create/edit/void/delete/restore) just triggered it: that mutation's
+ * own write already succeeded and is durable. Errors are logged, not
+ * thrown, so the operation the user asked for still reports success.
+ * If this does fail, the cached total self-corrects the next time any
+ * payment activity happens for this student.
+ */
 async function reconcileStudentPaid(studentId: string) {
-  const { data, error } = await supabase
-    .from("payments")
-    .select("amount")
-    .eq("student_id", studentId)
-    .eq("deleted", false)
-    .eq("voided", false);
-  if (error) throw error;
-  const paid = (data ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
-  await supabase.from("students").update({ paid_fee: paid }).eq("id", studentId);
+  try {
+    const { data, error } = await supabase
+      .from("payments")
+      .select("amount")
+      .eq("student_id", studentId)
+      .eq("deleted", false)
+      .eq("voided", false);
+    if (error) throw error;
+    const paid = (data ?? []).reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+    const { error: updErr } = await supabase
+      .from("students")
+      .update({ paid_fee: paid })
+      .eq("id", studentId);
+    if (updErr) throw updErr;
+  } catch (e) {
+    console.error(`[reconcileStudentPaid] failed for student ${studentId}:`, e);
+  }
 }
 
 export async function recordPayment(

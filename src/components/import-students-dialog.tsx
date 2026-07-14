@@ -18,9 +18,10 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 
-import { createStudent, listStudents } from "@/lib/data/adapter";
+import { createStudent, listStudents, recordPayment } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
-import type { Batch } from "@/lib/data/types";
+import { todayLocalISO } from "@/lib/format";
+import type { Batch, Payment } from "@/lib/data/types";
 
 // ---------- Types ----------
 
@@ -55,6 +56,8 @@ type ImportResult = {
   row: ParsedRow;
   status: "success" | "failed";
   error?: string;
+  /** Only meaningful when status is "success" and the row had a Paid Fee > 0. */
+  paymentError?: string;
 };
 
 // ---------- Column mapping ----------
@@ -118,17 +121,6 @@ const MONTH_NAMES: Record<string, number> = {
 
 function daysInMonth(y: number, m: number): number {
   return new Date(y, m, 0).getDate();
-}
-
-/**
- * Today's date as YYYY-MM-DD in the *local* calendar day, not UTC.
- * `new Date().toISOString()` is UTC-based, which for IST (UTC+5:30) rolls
- * back to "yesterday" for the first ~5.5 hours of every local day — the
- * wrong default for a Payment Date field on an India-focused app.
- */
-function todayLocalISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 function makeISODate(y: number, m: number, d: number): string | null {
@@ -459,7 +451,7 @@ export function ImportStudentsDialog({
       for (const r of chunk) {
         try {
           const courseFee = batch.totalCourseFee ?? 0;
-          await createStudent({
+          const created = await createStudent({
             rollNo: r.rollNo || `${settings.institute.name.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 90 + 10)}`,
             name: r.name,
             phone: r.phone,
@@ -481,7 +473,34 @@ export function ImportStudentsDialog({
             status: "active",
             course: batch.course,
           });
-          results.push({ row: r, status: "success" });
+
+          let paymentError: string | undefined;
+          // Blank or 0 Paid Fee: student imports normally, no payment record.
+          if (r.paidFee !== undefined && r.paidFee > 0) {
+            try {
+              // Exactly the same call the Receive Payment dialog makes —
+              // reuses recordPayment rather than re-implementing payment
+              // creation, so receipt numbering, the payments-table write,
+              // and the paid_fee reconciliation all stay in one place.
+              await recordPayment({
+                studentId: created.id,
+                amount: r.paidFee,
+                date: r.paymentDate ?? todayLocalISO(),
+                mode: (r.paymentMode ?? "Cash") as Payment["mode"],
+                note: r.paymentDescription,
+                type: "fee",
+              });
+            } catch (payErr) {
+              paymentError =
+                payErr instanceof Error ? payErr.message : "Could not create historical payment";
+              console.error(
+                `[import] historical payment failed for ${r.name} (row ${r.rowNumber}):`,
+                payErr,
+              );
+            }
+          }
+
+          results.push({ row: r, status: "success", paymentError });
         } catch (err) {
           results.push({
             row: r,
@@ -499,12 +518,24 @@ export function ImportStudentsDialog({
     setStage("done");
     await qc.invalidateQueries();
     const ok = results.filter((r) => r.status === "success").length;
+    const payFailures = results.filter((r) => r.status === "success" && r.paymentError).length;
     toast.success(`Imported ${ok} students`);
+    if (payFailures > 0) {
+      toast.warning(
+        `${payFailures} student${payFailures === 1 ? "" : "s"} imported, but ${payFailures === 1 ? "its" : "their"} historical payment could not be recorded — see the downloadable report.`,
+      );
+    }
   };
 
   const downloadFailedCSV = () => {
     const failed = [
       ...imported.filter((r) => r.status === "failed").map((r) => ({ ...r.row, reason: r.error ?? "Import failed" })),
+      ...imported
+        .filter((r) => r.status === "success" && r.paymentError)
+        .map((r) => ({
+          ...r.row,
+          reason: `Student imported, but historical payment was NOT created: ${r.paymentError}`,
+        })),
       ...rows.filter((r) => r.errors.length > 0).map((r) => ({ ...r, reason: r.errors.join("; ") })),
       ...rows.filter((r) => r.duplicate && r.errors.length === 0).map((r) => ({ ...r, reason: r.duplicateReason ?? "Duplicate" })),
     ];
@@ -525,11 +556,14 @@ export function ImportStudentsDialog({
 
   const importSummary = useMemo(() => {
     const successes = imported.filter((r) => r.status === "success");
-    const paymentsCreated = successes.filter((r) => r.row.paidFee !== undefined).length;
-    const withoutPayment = successes.filter((r) => r.row.paidFee === undefined).length;
+    const attemptedPayment = successes.filter((r) => r.row.paidFee !== undefined && r.row.paidFee > 0);
+    const paymentsCreated = attemptedPayment.filter((r) => !r.paymentError).length;
+    const paymentFailures = attemptedPayment.filter((r) => r.paymentError).length;
+    const withoutPayment = successes.length - paymentsCreated;
     return {
       studentsImported: successes.length,
       paymentsCreated,
+      paymentFailures,
       withoutPayment,
       failedRows: imported.filter((r) => r.status === "failed").length + stats.invalid,
       duplicatesSkipped: stats.duplicate,
@@ -673,12 +707,24 @@ export function ImportStudentsDialog({
               <StatCard label="Students Without Payment History" value={importSummary.withoutPayment} />
               <StatCard label="Duplicates Skipped" value={importSummary.duplicatesSkipped} tone="warn" />
               <StatCard label="Failed Rows" value={importSummary.failedRows} tone="danger" />
+              {importSummary.paymentFailures > 0 && (
+                <StatCard
+                  label="Payment Creation Failed"
+                  value={importSummary.paymentFailures}
+                  tone="danger"
+                />
+              )}
             </div>
             <DialogFooter>
               <Button
                 variant="outline"
                 onClick={downloadFailedCSV}
-                disabled={importSummary.failedRows + importSummary.duplicatesSkipped === 0}
+                disabled={
+                  importSummary.failedRows +
+                    importSummary.duplicatesSkipped +
+                    importSummary.paymentFailures ===
+                  0
+                }
               >
                 <Download className="h-4 w-4" /> Download failed records
               </Button>
