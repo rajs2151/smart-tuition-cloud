@@ -148,26 +148,41 @@ export type Database = {
         Row: {
           access_enabled: boolean
           created_at: string
+          display_name: string | null
           id: string
           institute_id: string
+          invited_at: string
+          invited_by: string | null
+          invited_email: string | null
           role: Database["public"]["Enums"]["member_role"]
-          user_id: string
+          status: string
+          user_id: string | null
         }
         Insert: {
           access_enabled?: boolean
           created_at?: string
+          display_name?: string | null
           id?: string
           institute_id: string
+          invited_at?: string
+          invited_by?: string | null
+          invited_email?: string | null
           role?: Database["public"]["Enums"]["member_role"]
-          user_id: string
+          status?: string
+          user_id?: string | null
         }
         Update: {
           access_enabled?: boolean
           created_at?: string
+          display_name?: string | null
           id?: string
           institute_id?: string
+          invited_at?: string
+          invited_by?: string | null
+          invited_email?: string | null
           role?: Database["public"]["Enums"]["member_role"]
-          user_id?: string
+          status?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -532,14 +547,39 @@ export type Database = {
         Args: { _institute: string; _user: string }
         Returns: boolean
       }
+      is_owner_or_admin: {
+        Args: { _institute: string; _user: string }
+        Returns: boolean
+      }
       next_receipt_number: { Args: { _institute: string }; Returns: string }
       create_institute_with_owner: {
         Args: { _name: string; _phone: string; _address: string; _email: string }
         Returns: Database["public"]["Tables"]["institutes"]["Row"]
       }
+      invite_member: {
+        Args: {
+          _institute: string
+          _email: string
+          _name: string
+          _role: Database["public"]["Enums"]["member_role"]
+        }
+        Returns: Database["public"]["Tables"]["institute_members"]["Row"]
+      }
+      change_member_role: {
+        Args: {
+          _institute: string
+          _member_id: string
+          _role: Database["public"]["Enums"]["member_role"]
+        }
+        Returns: Database["public"]["Tables"]["institute_members"]["Row"]
+      }
+      remove_member: {
+        Args: { _institute: string; _member_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
-      member_role: "owner" | "staff"
+      member_role: "owner" | "staff" | "admin" | "teacher" | "accountant"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -667,7 +707,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      member_role: ["owner", "staff"],
+      member_role: ["owner", "staff", "admin", "teacher", "accountant"],
     },
   },
 } as const

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { initAuth, refreshMembership, useSession } from "@/lib/auth/session";
+import { loadTeamMembers } from "@/lib/team/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,15 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     initAuth();
   }, []);
+
+  // Recent Activity resolves actor names against this roster (see
+  // getActorName in lib/team/store.ts) — it doesn't auto-fetch on its
+  // own, so it needs to be loaded once per session, here, rather than
+  // firing an extra query on every page that happens to show an actor
+  // name.
+  useEffect(() => {
+    if (session.status === "ready") loadTeamMembers();
+  }, [session.status, session.instituteId]);
 
   if (session.status === "loading") {
     return (

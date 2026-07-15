@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { hydrateSettingsFromDb, resetSettings } from "@/lib/settings/store";
+import type { MemberRole } from "@/lib/auth/roles";
 
 export type SessionState = {
   status:
@@ -15,7 +16,10 @@ export type SessionState = {
   userId: string | null;
   email: string | null;
   instituteId: string | null;
-  role: "owner" | "staff" | null;
+  // Widened from "owner" | "staff" to the full team-roles model
+  // (see src/lib/auth/roles.ts). "staff" is kept for backward
+  // compatibility with any pre-existing rows.
+  role: MemberRole | null;
   errorMessage: string | null;
 };
 
@@ -72,10 +76,15 @@ async function loadActiveInstitute(userId: string) {
   const myGeneration = ++currentGeneration;
   const isStale = () => myGeneration !== currentGeneration;
 
+  // status="active" filters out any row where this user id is sitting on
+  // someone else's still-pending invite record — not actually possible
+  // today (pending rows never have a user_id), but explicit is cheap
+  // insurance if that ever changes.
   const { data: memberships, error } = await supabase
     .from("institute_members")
-    .select("institute_id, role, access_enabled")
+    .select("institute_id, role, access_enabled, status")
     .eq("user_id", userId)
+    .eq("status", "active")
     .order("created_at", { ascending: true });
 
   if (isStale()) return;
@@ -103,7 +112,7 @@ async function loadActiveInstitute(userId: string) {
     set({
       status: "disabled",
       instituteId: membership.institute_id,
-      role: membership.role as "owner" | "staff",
+      role: membership.role as MemberRole,
     });
     return;
   }
@@ -141,7 +150,7 @@ async function loadActiveInstitute(userId: string) {
     set({
       status: "expired",
       instituteId: membership.institute_id,
-      role: membership.role as "owner" | "staff",
+      role: membership.role as MemberRole,
     });
     return;
   }
@@ -149,7 +158,7 @@ async function loadActiveInstitute(userId: string) {
     set({
       status: "blocked",
       instituteId: membership.institute_id,
-      role: membership.role as "owner" | "staff",
+      role: membership.role as MemberRole,
     });
     return;
   }
@@ -157,7 +166,7 @@ async function loadActiveInstitute(userId: string) {
   set({
     status: "ready",
     instituteId: membership.institute_id,
-    role: membership.role as "owner" | "staff",
+    role: membership.role as MemberRole,
     errorMessage: null,
   });
 }
@@ -195,6 +204,14 @@ export function initAuth() {
   // every page load kicked off TWO independent, unsequenced
   // loadActiveInstitute() calls — the exact race described above. Relying on
   // one listener removes that race entirely instead of papering over it.
+  //
+  // This is also where an invited user's very first sign-in resolves into
+  // their institute: the `link_pending_invitations` DB trigger runs
+  // synchronously when their auth.users row is created (see
+  // supabase/migrations/20260714120001_team_members_rpcs_and_rls.sql), so
+  // by the time loadActiveInstitute() below queries institute_members,
+  // their pending invite has already been flipped to an active membership
+  // with their real user_id — no extra client-side step needed.
   supabase.auth.onAuthStateChange((event, session) => {
     if (!session?.user) {
       resetSettings();

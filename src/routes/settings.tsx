@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { TemplatesTab } from "@/components/templates-tab";
+import { TeamMembersSection } from "@/components/settings/team-members-section";
 
 import {
   addMasterValue,
@@ -45,6 +46,7 @@ function SettingsPage() {
             <TabsTrigger value="templates">Message Templates</TabsTrigger>
             <TabsTrigger value="academic">Academic</TabsTrigger>
             <TabsTrigger value="backend">Backend</TabsTrigger>
+            <TabsTrigger value="team">Team</TabsTrigger>
             <TabsTrigger value="subscription">Subscription</TabsTrigger>
           </TabsList>
 
@@ -53,6 +55,9 @@ function SettingsPage() {
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
           <TabsContent value="academic"><AcademicTab /></TabsContent>
           <TabsContent value="backend"><BackendTab /></TabsContent>
+          <TabsContent value="team">
+            <TeamMembersSection />
+          </TabsContent>
           <TabsContent value="subscription"><SubscriptionTab /></TabsContent>
         </Tabs>
       </main>
@@ -431,7 +436,7 @@ function SubscriptionTab() {
       </CardHeader>
       <CardContent className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="font-display text-lg font-bold">Growth · ₹4,999 / year</p>
+          <p className="font-display text-lg font-bold">Growth · ₹5,999 / year</p>
           <p className="text-xs text-muted-foreground">
             Up to 500 students · WhatsApp reminders · Unlimited receipts · Multi-batch
           </p>

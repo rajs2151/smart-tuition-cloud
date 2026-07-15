@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { listLogs, listRecycle, useAudit } from "@/lib/audit/store";
+import { getActorName } from "@/lib/team/store";
 import {
   listStudents, restoreStudent, purgeStudent,
   restoreBatch, purgeBatch,
@@ -162,7 +163,7 @@ function RecyclePage() {
                             <span className="capitalize text-muted-foreground">{l.action}</span>
                             <span className="ml-2">{l.summary}</span>
                           </p>
-                          <p className="text-xs text-muted-foreground">{l.by} · {new Date(l.at).toLocaleString("en-IN")}</p>
+                          <p className="text-xs text-muted-foreground">{getActorName(l.by)} · {new Date(l.at).toLocaleString("en-IN")}</p>
                         </div>
                       </div>
                     ))}
