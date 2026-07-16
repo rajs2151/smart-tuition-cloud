@@ -27,7 +27,15 @@ export const Route = createFileRoute("/receipts/$id")({
         if (!payment) throw notFound();
         const student = await getStudent(payment.studentId);
         const batches = await listBatches();
-        return { payment, student, batch: batches.find((b) => b.id === student?.batchId) };
+        const totalPaid = all
+          .filter((p) => p.studentId === payment.studentId && !p.voided)
+          .reduce((sum, p) => sum + p.amount, 0);
+        return {
+          payment,
+          student,
+          batch: batches.find((b) => b.id === student?.batchId),
+          totalPaid,
+        };
       },
     });
   },
@@ -46,16 +54,19 @@ function ReceiptDetail() {
       const payment = all.find((p) => p.id === params.id)!;
       const student = await getStudent(payment.studentId);
       const batches = await listBatches();
-      return { payment, student, batch: batches.find((b) => b.id === student?.batchId) };
+      const totalPaid = all
+        .filter((p) => p.studentId === payment.studentId && !p.voided)
+        .reduce((sum, p) => sum + p.amount, 0);
+      return { payment, student, batch: batches.find((b) => b.id === student?.batchId), totalPaid };
     },
   });
   const { institute, receipt: cfg } = useSettings();
-  const { payment, student, batch } = data;
+  const { payment, student, batch, totalPaid } = data;
   if (!student) return null;
 
   const contact = getEffectiveReceiptContact(institute, cfg);
   const billed = student.totalFee - student.discount;
-  const balance = Math.max(0, billed - student.paidFee);
+  const balance = Math.max(0, billed - totalPaid);
   const receiptRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -196,7 +207,7 @@ function ReceiptDetail() {
             <Row label="Course fee" value={inr(student.courseFee || student.totalFee)} />
             {student.admissionFee > 0 && <Row label="Admission fee" value={inr(student.admissionFee)} />}
             {student.discount > 0 && <Row label="Discount" value={`- ${inr(student.discount)}`} />}
-            <Row label="Total paid" value={inr(student.paidFee)} />
+            <Row label="Total paid" value={inr(totalPaid)} />
             <Row label="Pending balance" value={inr(balance)} bold tone={balance > 0 ? "danger" : "success"} />
           </div>
 
