@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AddStudentDialog } from "@/components/add-student-dialog";
 import { StudentRowMenu } from "@/components/student-row-menu";
 
-import { listBatches, listStudents } from "@/lib/data/adapter";
+import { listBatches, listPayments, listStudents } from "@/lib/data/adapter";
 import { initials, inr } from "@/lib/format";
 
 const q = {
@@ -21,6 +21,7 @@ const q = {
   queryFn: async () => ({
     students: await listStudents(),
     batches: await listBatches(),
+    payments: await listPayments(),
   }),
 };
 
@@ -42,14 +43,31 @@ function StudentsPage() {
   const [batch, setBatch] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
 
+  // Collected is derived from the payments ledger (already loaded on this
+  // page), not from the cached student.paidFee column. That column is
+  // reconciled by a best-effort background step after each payment; if it
+  // ever fails silently, paidFee can drift out of sync with the actual
+  // ledger while payments itself stays correct. Same fix as Dashboard,
+  // Fees list, Batch Fee Report, and Student Details, so every screen
+  // agrees.
+  const collectedByStudent = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of data.payments) {
+      if (p.voided) continue;
+      map.set(p.studentId, (map.get(p.studentId) ?? 0) + p.amount);
+    }
+    return map;
+  }, [data.payments]);
+
   const filtered = useMemo(
     () =>
       data.students.filter((s) => {
+        const collected = collectedByStudent.get(s.id) ?? 0;
         if (batch !== "all" && s.batchId !== batch) return false;
         if (status === "due") {
-          if (s.paidFee >= s.totalFee - s.discount) return false;
+          if (collected >= s.totalFee - s.discount) return false;
         } else if (status === "paid") {
-          if (s.paidFee < s.totalFee - s.discount) return false;
+          if (collected < s.totalFee - s.discount) return false;
         }
         if (!search) return true;
         const q = search.toLowerCase();
@@ -59,7 +77,7 @@ function StudentsPage() {
           s.phone.includes(q)
         );
       }),
-    [data.students, search, batch, status],
+    [data.students, collectedByStudent, search, batch, status],
   );
 
   return (
@@ -118,9 +136,10 @@ function StudentsPage() {
           </div>
           <div className="divide-y">
             {filtered.map((s) => {
+              const collected = collectedByStudent.get(s.id) ?? 0;
               const billed = s.totalFee - s.discount;
-              const due = Math.max(0, billed - s.paidFee);
-              const pct = Math.round((s.paidFee / Math.max(1, billed)) * 100);
+              const due = Math.max(0, billed - collected);
+              const pct = Math.round((collected / Math.max(1, billed)) * 100);
               const batchName = data.batches.find((b) => b.id === s.batchId)?.name ?? s.course;
               return (
                 <div
@@ -146,7 +165,7 @@ function StudentsPage() {
                   </div>
                   <div className="col-span-12 md:col-span-2">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">{inr(s.paidFee)} / {inr(billed)}</span>
+                      <span className="text-muted-foreground">{inr(collected)} / {inr(billed)}</span>
                       <span className="font-semibold">{pct}%</span>
                     </div>
                     <Progress value={pct} className="mt-1.5 h-1.5" />

@@ -72,8 +72,21 @@ function Dashboard() {
   const { institute } = useSettings();
   const { students, payments, batches } = data;
 
+  // Collected is derived from the payments ledger (already loaded on this
+  // page), not from the cached student.paidFee column. That column is
+  // reconciled by a best-effort background step after each payment; if it
+  // ever fails silently, paidFee can drift out of sync with the actual
+  // ledger while payments itself stays correct. Same fix as Fees list,
+  // Batch Fee Report, and Student Details, so every screen agrees.
+  const collectedByStudent = new Map<string, number>();
+  for (const p of payments) {
+    if (p.voided) continue;
+    collectedByStudent.set(p.studentId, (collectedByStudent.get(p.studentId) ?? 0) + p.amount);
+  }
+  const collectedFor = (studentId: string) => collectedByStudent.get(studentId) ?? 0;
+
   const totalBilled = students.reduce((a, s) => a + (s.totalFee - s.discount), 0);
-  const totalCollected = students.reduce((a, s) => a + s.paidFee, 0);
+  const totalCollected = payments.filter((p) => !p.voided).reduce((a, p) => a + p.amount, 0);
   const pending = Math.max(0, totalBilled - totalCollected);
   const collectionRate = totalBilled ? Math.round((totalCollected / totalBilled) * 100) : 0;
   const activeStudents = students.filter((s) => s.status === "active").length;
@@ -110,7 +123,11 @@ function Dashboard() {
 
   // top defaulters
   const defaulters = [...students]
-    .map((s) => ({ ...s, due: Math.max(0, s.totalFee - s.discount - s.paidFee) }))
+    .map((s) => ({
+      ...s,
+      paidFee: collectedFor(s.id),
+      due: Math.max(0, s.totalFee - s.discount - collectedFor(s.id)),
+    }))
     .filter((s) => s.due > 0)
     .sort((a, b) => b.due - a.due)
     .slice(0, 5);
@@ -164,7 +181,7 @@ function Dashboard() {
   // batch revenue
   const batchRevenue = batches.map((b) => {
     const sIds = students.filter((s) => s.batchId === b.id);
-    const collected = sIds.reduce((a, s) => a + s.paidFee, 0);
+    const collected = sIds.reduce((a, s) => a + collectedFor(s.id), 0);
     return { name: b.name.split("—")[0].trim().slice(0, 18), value: collected };
   });
 

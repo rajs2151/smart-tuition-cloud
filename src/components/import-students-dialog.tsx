@@ -516,7 +516,7 @@ export function ImportStudentsDialog({
 
     setImported(results);
     setStage("done");
-    await qc.invalidateQueries();
+    await qc.invalidateQueries({ refetchType: "all" });
     const ok = results.filter((r) => r.status === "success").length;
     const payFailures = results.filter((r) => r.status === "success" && r.paymentError).length;
     toast.success(`Imported ${ok} students`);

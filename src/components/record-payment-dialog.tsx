@@ -145,25 +145,20 @@ export function RecordPaymentDialog({
       setDateError("");
       setDuplicateAckKey(null);
 
-      // Refresh every page that shows aggregate totals (Fees, Batches,
-      // Receipts, ...). This refetches any of them that are currently
-      // mounted/active; inactive ones are just flagged stale.
-      await qc.invalidateQueries();
-
-      // That's not enough for the Student Details route on its own: its
-      // loader reads ["student", studentId] via ensureQueryData, whose
-      // revalidateIfStale option defaults to false — a cache entry that
-      // merely got flagged stale (rather than actually refetched) is
-      // served as-is on the next visit, with no network request. That's
-      // what makes a Fee Summary look frozen until a hard reload wipes the
-      // whole client cache. Forcing a real refetch here — regardless of
-      // whether that query happens to be active right now — closes that
-      // gap in both directions: if this dialog is open on the Student
-      // Details page itself, the summary updates immediately; if it was
-      // opened elsewhere (e.g. the Fees page), the cache is refreshed in
-      // the background so the next visit to that student's page is
-      // correct without needing a reload.
-      await qc.refetchQueries({ queryKey: ["student", studentId], type: "all" });
+      // Force a real refetch of every cached query, not just active ones.
+      // invalidateQueries() with no options defaults to refetchType:
+      // "active" — any page not currently mounted (Dashboard, Student
+      // List, Student Details opened from elsewhere, ...) would only be
+      // flagged stale, and since their loaders use ensureQueryData (whose
+      // revalidateIfStale option defaults to false), a merely-stale entry
+      // is served as-is on the next visit with no network request. That's
+      // what made Fee Summary/Dashboard totals/Student List progress look
+      // frozen until a hard reload wiped the whole client cache. This is
+      // the one place every payment-affecting mutation in the app goes
+      // through the same fix (see also payment-row-menu.tsx,
+      // import-students-dialog.tsx, recycle-bin.tsx) — no per-page wiring
+      // to remember for whatever the next new page turns out to be.
+      await qc.invalidateQueries({ refetchType: "all" });
 
       onRecorded?.(created);
     } catch (e) {

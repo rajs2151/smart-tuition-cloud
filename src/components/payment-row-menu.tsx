@@ -58,7 +58,7 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
     try {
       await voidPayment(payment.id);
       toast.success("Payment voided");
-      await qc.invalidateQueries();
+      await qc.invalidateQueries({ refetchType: "all" });
       setVoidOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not void payment");
@@ -138,7 +138,7 @@ function EditPaymentDialog({ payment, open, onOpenChange }: {
     try {
       await updatePayment(payment.id, { amount: Number(amount), date, mode, note });
       toast.success("Payment updated");
-      await qc.invalidateQueries();
+      await qc.invalidateQueries({ refetchType: "all" });
       onOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update payment");

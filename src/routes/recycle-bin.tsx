@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { RotateCcw, Trash2, Search, Clock } from "lucide-react";
@@ -38,6 +39,7 @@ export const Route = createFileRoute("/recycle-bin")({
 });
 
 function RecyclePage() {
+  const qc = useQueryClient();
   useAudit();
   useExpenseStore();
   // touch students list to ensure refresh on changes
@@ -61,6 +63,7 @@ function RecyclePage() {
     else if (entity === "payment") await restorePayment(id);
     toast.success("Restored");
     refresh();
+    await qc.invalidateQueries({ refetchType: "all" });
   };
   const doPurge = async (entity: string, id: string) => {
     if (entity === "student") await purgeStudent(id);
@@ -68,6 +71,7 @@ function RecyclePage() {
     else if (entity === "payment") await purgePayment(id);
     toast.success("Permanently deleted");
     refresh();
+    await qc.invalidateQueries({ refetchType: "all" });
   };
 
   return (
