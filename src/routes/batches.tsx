@@ -20,15 +20,16 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import {
-  createBatch, deleteBatch, listBatches, listPayments, listStudents, updateBatch,
+  createBatch, deleteBatch, listBatches, listPayments, listPaymentsForBatchInRange, listStudents, updateBatch,
 } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
-import { inr, fmtDate } from "@/lib/format";
+import { inr, fmtDate, todayLocalISO } from "@/lib/format";
 import { sanitizeNumberInput } from "@/lib/number-input";
 import type { Batch, BatchType, Standard, Board, Medium, ExamCategory, Payment, Student } from "@/lib/data/types";
 import { ImportStudentsDialog } from "@/components/import-students-dialog";
 import { Upload } from "lucide-react";
 import { downloadBatchFeeReport } from "@/lib/reports/batch-fee-report";
+import { downloadBatchCollectionReport } from "@/lib/reports/batch-collection-report";
 
 const q = {
   queryKey: ["batches-page"],
@@ -118,6 +119,7 @@ function BatchesPage() {
                       </div>
                     </div>
 
+                    <DownloadCollectionReportButton batch={b} />
                     <DownloadFeeReportButton batch={b} students={data.students} payments={data.payments} />
                   </CardContent>
                 </Card>
@@ -306,6 +308,66 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
         />
       ) : null}
     </Dialog>
+  );
+}
+
+function DownloadCollectionReportButton({ batch }: { batch: Batch }) {
+  const { institute } = useSettings();
+  const today = todayLocalISO();
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const [fromDate, setFromDate] = useState(monthStart);
+  const [toDate, setToDate] = useState(today);
+  const [loading, setLoading] = useState(false);
+
+  const handleDownload = async () => {
+    setLoading(true);
+    try {
+      const rows = await listPaymentsForBatchInRange(batch.id, fromDate, toDate);
+      await downloadBatchCollectionReport(batch, institute.name, fromDate, toDate, rows);
+      toast.success("Collection report downloaded");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not generate the collection report");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5 rounded-lg border bg-muted/20 p-2.5">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1">
+          <Label className="text-[10px] text-muted-foreground">From Date</Label>
+          <Input
+            type="date"
+            value={fromDate}
+            max={toDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="h-8 text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[10px] text-muted-foreground">To Date</Label>
+          <Input
+            type="date"
+            value={toDate}
+            min={fromDate}
+            max={today}
+            onChange={(e) => setToDate(e.target.value)}
+            className="h-8 text-xs"
+          />
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full"
+        disabled={loading}
+        onClick={handleDownload}
+      >
+        <FileDown className="h-3.5 w-3.5" />
+        {loading ? "Generating…" : "Download Collection Report"}
+      </Button>
+    </div>
   );
 }
 

@@ -318,6 +318,44 @@ export async function listPayments(includeDeleted = false): Promise<Payment[]> {
   return (data ?? []).map(toPayment);
 }
 
+export interface BatchReportPayment extends Payment {
+  studentName: string;
+}
+
+/**
+ * Payments for one batch within a date range, for the Batch Collection
+ * Report. Queries only that batch's students within that date range
+ * (via the existing payments.student_id -> students FK) rather than
+ * fetching every institute payment and filtering client-side. Excludes
+ * voided/deleted payments, matching the definition of "collected" used
+ * on the Fees page, Receipts page, and Student Payment Timeline, so
+ * totals here always agree with those.
+ */
+export async function listPaymentsForBatchInRange(
+  batchId: string,
+  fromDate: string,
+  toDate: string,
+): Promise<BatchReportPayment[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .from("payments")
+    .select("*, students!inner(name, batch_id)")
+    .eq("institute_id", instId)
+    .eq("students.batch_id", batchId)
+    .eq("deleted", false)
+    .eq("voided", false)
+    .gte("date", fromDate)
+    .lte("date", toDate)
+    .order("date", { ascending: true });
+  if (error) throw error;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => ({
+    ...toPayment(row),
+    studentName: row.students?.name ?? "",
+  }));
+}
+
 export async function listPaymentsByStudent(studentId: string): Promise<Payment[]> {
   const { data, error } = await supabase
     .from("payments")
