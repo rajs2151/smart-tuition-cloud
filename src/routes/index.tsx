@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   Area,
@@ -6,9 +7,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -20,6 +18,7 @@ import {
   TrendingUp,
   Users,
   AlertCircle,
+  AlertTriangle,
   BookOpen,
   Bell,
   MessageCircle,
@@ -27,6 +26,7 @@ import {
   UserPlus,
   Sparkles,
   FileBarChart,
+  Percent,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,6 +37,14 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { AddStudentDialog } from "@/components/add-student-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { listBatches, listPayments, listStudents } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
@@ -72,6 +80,12 @@ function Dashboard() {
   const { institute } = useSettings();
   const { students, payments, batches } = data;
 
+  const [studentsModalOpen, setStudentsModalOpen] = useState(false);
+  const [collectionModalOpen, setCollectionModalOpen] = useState(false);
+  const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
+  const [followUpThreshold, setFollowUpThreshold] = useState(40);
+
   // Collected is derived from the payments ledger (already loaded on this
   // page), not from the cached student.paidFee column. That column is
   // reconciled by a best-effort background step after each payment; if it
@@ -94,43 +108,39 @@ function Dashboard() {
 
   const thisMonth = new Date().toISOString().slice(0, 7);
   const monthlyRevenue = payments
-    .filter((p) => p.date.startsWith(thisMonth))
+    .filter((p) => !p.voided && p.date.startsWith(thisMonth))
     .reduce((a, p) => a + p.amount, 0);
-  const newAdmissions = students.filter((s) => s.admissionDate.startsWith(thisMonth)).length;
 
-  // monthly trend (last 8 months)
-  const months: { m: string; collected: number; due: number }[] = [];
-  const now = new Date("2025-11-01");
+  // monthly trend (last 8 months, ending this month)
+  const months: { m: string; collected: number }[] = [];
+  const now = new Date();
   for (let i = 7; i >= 0; i--) {
-    const d = new Date(now);
-    d.setMonth(d.getMonth() - i);
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const collected = payments
-      .filter((p) => p.date.startsWith(key))
+      .filter((p) => !p.voided && p.date.startsWith(key))
       .reduce((a, p) => a + p.amount, 0);
-    months.push({
-      m: d.toLocaleString("en-IN", { month: "short" }),
-      collected,
-      due: Math.round(collected * (0.2 + Math.random() * 0.4)),
-    });
+    months.push({ m: d.toLocaleString("en-IN", { month: "short" }), collected });
   }
+  const hasTrendData = months.some((m) => m.collected > 0);
 
-  // payment mode split
-  const modeMap = new Map<string, number>();
-  payments.forEach((p) => modeMap.set(p.mode, (modeMap.get(p.mode) || 0) + p.amount));
-  const modeData = Array.from(modeMap, ([name, value]) => ({ name, value }));
-  const modeColors = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
+  // per-student % collected — the one place this is computed, reused by
+  // both "Top pending dues" / the Pending Fees modal and the new Students
+  // Needing Follow-up card below, so there's no second definition of
+  // "how much has this student paid" anywhere on this page.
+  const withProgress = students.map((s) => {
+    const billed = s.totalFee - s.discount;
+    const paid = collectedFor(s.id);
+    const due = Math.max(0, billed - paid);
+    const pct = billed > 0 ? Math.round((paid / billed) * 100) : 100;
+    return { ...s, paidFee: paid, billed, due, pct };
+  });
 
-  // top defaulters
-  const defaulters = [...students]
-    .map((s) => ({
-      ...s,
-      paidFee: collectedFor(s.id),
-      due: Math.max(0, s.totalFee - s.discount - collectedFor(s.id)),
-    }))
-    .filter((s) => s.due > 0)
-    .sort((a, b) => b.due - a.due)
-    .slice(0, 5);
+  // top defaulters — full list (for the Pending Fees modal) and the
+  // top-5 slice already shown inline, both derived from withProgress so
+  // there's exactly one "who owes what" calculation on this page.
+  const pendingStudents = withProgress.filter((s) => s.due > 0).sort((a, b) => b.due - a.due);
+  const defaulters = pendingStudents.slice(0, 5);
 
   const recent = payments.slice(0, 6);
 
@@ -185,6 +195,25 @@ function Dashboard() {
     return { name: b.name.split("—")[0].trim().slice(0, 18), value: collected };
   });
 
+  // students by standard (exam-category students grouped under their exam
+  // instead, since they don't have a standard) — for the Total Students
+  // modal, sorted highest count first.
+  const byStandard = new Map<string, number>();
+  for (const s of students) {
+    const label = s.standard ?? s.examCategory ?? "Other";
+    byStandard.set(label, (byStandard.get(label) ?? 0) + 1);
+  }
+  const studentsByStandard = Array.from(byStandard, ([label, count]) => ({ label, count })).sort(
+    (a, b) => b.count - a.count,
+  );
+
+  // Students below the follow-up threshold, reusing the same % collected
+  // computed once in withProgress above.
+  const followUpBelow = followUpThreshold;
+  const followUpStudents = withProgress
+    .filter((s) => s.pct <= followUpBelow)
+    .sort((a, b) => a.pct - b.pct);
+
   return (
     <>
       <AppHeader
@@ -236,11 +265,38 @@ function Dashboard() {
 
         {/* KPIs */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Kpi label="Total students" value={students.length.toString()} delta={`${activeStudents} active`} tone="info" icon={<Users className="h-4 w-4" />} />
-          <Kpi label="New admissions (this month)" value={newAdmissions.toString()} delta="+ this month" tone="primary" icon={<UserPlus className="h-4 w-4" />} />
+          <Kpi
+            label="Total students"
+            value={students.length.toString()}
+            delta={`${activeStudents} active`}
+            tone="info"
+            icon={<Users className="h-4 w-4" />}
+            onClick={() => setStudentsModalOpen(true)}
+          />
+          <Kpi
+            label="Collection efficiency"
+            value={`${collectionRate}%`}
+            delta={`${100 - collectionRate}% pending`}
+            tone="primary"
+            icon={<Percent className="h-4 w-4" />}
+          />
           <Kpi label="Active batches" value={activeBatches.toString()} delta={`${batches.length} total`} tone="warning" icon={<BookOpen className="h-4 w-4" />} />
-          <Kpi label="Total collection" value={inr(totalCollected)} delta={`${collectionRate}% of billed`} tone="success" icon={<IndianRupee className="h-4 w-4" />} />
-          <Kpi label="Pending fees" value={inr(pending)} delta={`${defaulters.length} students`} tone="warning" icon={<AlertCircle className="h-4 w-4" />} />
+          <Kpi
+            label="Total collection"
+            value={inr(totalCollected)}
+            delta={`${collectionRate}% of billed`}
+            tone="success"
+            icon={<IndianRupee className="h-4 w-4" />}
+            onClick={() => setCollectionModalOpen(true)}
+          />
+          <Kpi
+            label="Pending fees"
+            value={inr(pending)}
+            delta={`${pendingStudents.length} students`}
+            tone="warning"
+            icon={<AlertCircle className="h-4 w-4" />}
+            onClick={() => setPendingModalOpen(true)}
+          />
           <Kpi label="Monthly revenue" value={inr(monthlyRevenue)} delta="current month" tone="primary" icon={<TrendingUp className="h-4 w-4" />} />
         </div>
 
@@ -252,59 +308,93 @@ function Dashboard() {
                 <CardTitle className="text-base">Collection trend</CardTitle>
                 <p className="text-xs text-muted-foreground">Last 8 months</p>
               </div>
-              <Badge variant="outline" className="gap-1">
-                <TrendingUp className="h-3 w-3 text-success" /> Trending up
-              </Badge>
+              {hasTrendData && (
+                <Badge variant="outline" className="gap-1">
+                  <TrendingUp className="h-3 w-3 text-success" /> Trending up
+                </Badge>
+              )}
             </CardHeader>
             <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={months} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-                    <defs>
-                      <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                    <XAxis dataKey="m" stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={inrShort} />
-                    <Tooltip
-                      contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }}
-                      formatter={(v: number) => inr(v)}
-                    />
-                    <Area type="monotone" dataKey="collected" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#g1)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              {hasTrendData ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={months} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+                      <defs>
+                        <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.4} />
+                          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
+                      <XAxis dataKey="m" stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                      <YAxis stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={inrShort} />
+                      <Tooltip
+                        contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }}
+                        formatter={(v: number) => inr(v)}
+                      />
+                      <Area type="monotone" dataKey="collected" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#g1)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex h-64 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+                  <TrendingUp className="h-8 w-8 opacity-40" />
+                  <p>No payments recorded in the last 8 months yet.</p>
+                  <p className="text-xs">
+                    The trend will appear here once collections start coming in.
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Payment mode */}
+          {/* Students needing follow-up */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Payment modes</CardTitle>
-              <p className="text-xs text-muted-foreground">All-time share</p>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base">Needs follow-up</CardTitle>
+                <Select
+                  value={String(followUpThreshold)}
+                  onValueChange={(v) => setFollowUpThreshold(Number(v))}
+                >
+                  <SelectTrigger className="h-7 w-[84px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[20, 30, 40, 50, 60].map((t) => (
+                      <SelectItem key={t} value={String(t)}>
+                        ≤ {t}%
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Students who've collected {followUpThreshold}% or less
+              </p>
             </CardHeader>
-            <CardContent>
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={modeData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
-                      {modeData.map((_, i) => <Cell key={i} fill={modeColors[i % modeColors.length]} />)}
-                    </Pie>
-                    <Tooltip formatter={(v: number) => inr(v)} contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }} />
-                  </PieChart>
-                </ResponsiveContainer>
+            <CardContent
+              className="cursor-pointer"
+              onClick={() => followUpStudents.length > 0 && setFollowUpModalOpen(true)}
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                  <AlertTriangle className="h-6 w-6" />
+                </span>
+                <div>
+                  <p className="font-display text-3xl font-bold leading-none">
+                    {followUpStudents.length}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {followUpStudents.length === 1 ? "student" : "students"} below threshold
+                  </p>
+                </div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                {modeData.map((m, i) => (
-                  <div key={m.name} className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: modeColors[i % modeColors.length] }} />
-                    <span className="text-muted-foreground">{m.name}</span>
-                  </div>
-                ))}
-              </div>
+              {followUpStudents.length > 0 && (
+                <p className="mt-3 text-xs text-primary hover:underline">
+                  View list <ArrowUpRight className="inline h-3 w-3" />
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -412,9 +502,9 @@ function Dashboard() {
                     </div>
                     <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
                       <span>{s.course} · {s.rollNo}</span>
-                      <span>{Math.round((s.paidFee / Math.max(1, s.totalFee - s.discount)) * 100)}% paid</span>
+                      <span>{s.pct}% paid</span>
                     </div>
-                    <Progress value={(s.paidFee / Math.max(1, s.totalFee - s.discount)) * 100} className="mt-1.5 h-1.5" />
+                    <Progress value={s.pct} className="mt-1.5 h-1.5" />
                   </div>
                 </div>
               ))}
@@ -478,6 +568,90 @@ function Dashboard() {
           </CardContent>
         </Card>
       </main>
+
+      <Dialog open={studentsModalOpen} onOpenChange={setStudentsModalOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Students by standard</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1">
+            {studentsByStandard.map(({ label, count }) => (
+              <div
+                key={label}
+                className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm"
+              >
+                <span className="font-medium">{label}</span>
+                <span className="text-muted-foreground">
+                  {count} {count === 1 ? "Student" : "Students"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={collectionModalOpen} onOpenChange={setCollectionModalOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Collected fees by batch</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1">
+            {batchRevenue.map((b) => (
+              <div
+                key={b.name}
+                className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm"
+              >
+                <span className="font-medium">{b.name}</span>
+                <span className="text-muted-foreground">{inr(b.value)}</span>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pendingModalOpen} onOpenChange={setPendingModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Students with pending fees ({pendingStudents.length})</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-1 overflow-y-auto">
+            {pendingStudents.map((s) => (
+              <Link
+                key={s.id}
+                to="/students/$id"
+                params={{ id: s.id }}
+                className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+              >
+                <span className="min-w-0 truncate font-medium">{s.name}</span>
+                <span className="ml-2 shrink-0 font-semibold text-destructive">{inr(s.due)}</span>
+              </Link>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={followUpModalOpen} onOpenChange={setFollowUpModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Needs follow-up — collected ≤ {followUpThreshold}% ({followUpStudents.length})
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-1 overflow-y-auto">
+            {followUpStudents.map((s) => (
+              <Link
+                key={s.id}
+                to="/students/$id"
+                params={{ id: s.id }}
+                className="flex items-center justify-between rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+              >
+                <span className="min-w-0 truncate font-medium">{s.name}</span>
+                <span className="ml-2 shrink-0 text-xs text-muted-foreground">{s.pct}% paid</span>
+              </Link>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -488,12 +662,14 @@ function Kpi({
   delta,
   tone,
   icon,
+  onClick,
 }: {
   label: string;
   value: string;
   delta: string;
   tone: "success" | "warning" | "info" | "primary";
   icon: React.ReactNode;
+  onClick?: () => void;
 }) {
   const tones: Record<string, string> = {
     success: "bg-success/10 text-success",
@@ -502,7 +678,12 @@ function Kpi({
     primary: "bg-primary/10 text-primary",
   };
   return (
-    <Card>
+    <Card
+      onClick={onClick}
+      className={
+        onClick ? "cursor-pointer transition hover:border-primary hover:shadow-md" : undefined
+      }
+    >
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
