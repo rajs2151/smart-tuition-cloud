@@ -182,7 +182,7 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
     if (isEdit && batch) {
       const updated = await updateBatch(batch.id, form);
       toast.success("Batch updated");
-      await qc.invalidateQueries();
+      await qc.invalidateQueries({ refetchType: "all" });
       return updated;
     }
     const created = await createBatch(form);

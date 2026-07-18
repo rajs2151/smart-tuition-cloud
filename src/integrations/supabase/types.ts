@@ -552,6 +552,10 @@ export type Database = {
         Returns: boolean
       }
       next_receipt_number: { Args: { _institute: string }; Returns: string }
+      sync_batch_course_fee: {
+        Args: { _batch_id: string; _new_fee: number }
+        Returns: undefined
+      }
       create_institute_with_owner: {
         Args: { _name: string; _phone: string; _address: string; _email: string }
         Returns: Database["public"]["Tables"]["institutes"]["Row"]

@@ -265,9 +265,28 @@ export async function createBatch(b: Omit<Batch, "id" | "instituteId">): Promise
 }
 
 export async function updateBatch(id: string, patch: Partial<Batch>): Promise<Batch> {
+  const { data: before } = await supabase
+    .from("batches")
+    .select("total_course_fee")
+    .eq("id", id)
+    .maybeSingle();
   const { data, error } = await supabase.from("batches").update(fromBatch(patch)).eq("id", id).select("*").single();
   if (error) throw error;
   const b = toBatch(data);
+  if (
+    patch.totalCourseFee !== undefined &&
+    Number(before?.total_course_fee) !== patch.totalCourseFee
+  ) {
+    try {
+      const { error: syncErr } = await supabase.rpc("sync_batch_course_fee", {
+        _batch_id: id,
+        _new_fee: patch.totalCourseFee,
+      });
+      if (syncErr) throw syncErr;
+    } catch (e) {
+      console.error(`[updateBatch] sync_batch_course_fee failed for batch ${id}:`, e);
+    }
+  }
   logAudit({ entity: "batch", entityId: id, action: "update", by: currentUser(), summary: `Updated batch ${b.name}` });
   return b;
 }
