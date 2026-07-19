@@ -5,6 +5,126 @@ first). Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 2026-07-18 (Session 3, part 2)
+
+### Fixed
+- **Batch Total Course Fee changes weren't reaching enrolled students.**
+  `student.courseFee`/`totalFee` are copied from the batch once, at
+  creation — editing a batch's fee afterward only updated the `batches`
+  row. Added `sync_batch_course_fee` (new migration
+  `20260718090000_sync_batch_course_fee.sql`), called from `updateBatch()`
+  only when the fee actually changes; needed as a DB function because
+  `total_fee = new_fee + admission_fee` is a per-row expression
+  (`admission_fee` differs per student) that a single client `.update()`
+  call can't express. Also widened that save path's cache invalidation to
+  `refetchType: "all"`, since this now writes to `students` too.
+
+### Added
+- **Batch Collection Report** — a second, additive report per batch card:
+  From/To date pickers (default to the current month) + "Download
+  Collection Report", a transaction-level export (one row per payment, no
+  aggregation) distinct from the existing per-student Batch Fee Report.
+  New adapter function `listPaymentsForBatchInRange()` queries only that
+  batch's payments in that date range server-side, not the full
+  institute payment list filtered client-side.
+
+## 2026-07-16 (Session 3, part 1)
+
+### Fixed
+- **Recurring "different pages disagree on Collected/Due" bug**, found
+  and fixed on five separate screens over several passes: Student
+  Details, Fees list, Batch Fee Report, Dashboard, Student List, and the
+  individual receipt page. Root cause every time: reading
+  `student.paidFee` (a column reconciled by a best-effort background
+  step) instead of deriving Collected from a live sum over that
+  student's non-voided payments. Also widened `invalidateQueries()` to
+  `{ refetchType: "all" }` at every payment-mutating call site (record,
+  edit, void, bulk import, restore/purge) instead of the narrower
+  per-page refetch pattern that let this slip through repeatedly.
+- **"Save & Generate Receipt" showed an error even though the payment and
+  receipt were both created.** Traced the full call chain: `recordPayment()`
+  durably inserts the payment, then calls `reconcileStudentPaid()`
+  (updates the student's cached `paid_fee`) — that reconcile step could
+  throw for unrelated transient reasons *after* the payment already
+  committed, rejecting the whole call. Made `reconcileStudentPaid()`
+  best-effort (log, don't throw), which also silently fixed the same
+  latent bug in edit/void/delete/restore.
+- **Record Payment button on Student Details did nothing** —
+  `RecordPaymentDialog` only existed as a private component inside
+  `fees.tsx`. Extracted to `src/components/record-payment-dialog.tsx` as
+  the one shared implementation.
+- **Duplicate receipts from repeated clicks** — "Save & generate receipt"
+  had no loading state or re-entrancy guard, so a slow response (or an
+  impatient re-click) could fire multiple payments. Added a `submitting`
+  guard + disabled button, and a same-day/same-amount/same-mode
+  duplicate-payment warning.
+- **Historical payment import created no payment history** — the
+  importer wrote `paidFee` directly onto the student row but never
+  called `recordPayment()`, so Payment Timeline/receipts stayed empty
+  for imported students. Fixed to call the same function manual payments
+  use, gated on `paidFee > 0`.
+
+### Added
+- **Multi-user Team Members** — owner/admin/teacher/accountant roles,
+  invite by email with 5-seat cap, pending-invite auto-linking on first
+  sign-in, owner-only management (matching the product's own permission
+  table). Two migrations
+  (`20260714120000_team_members_schema.sql`,
+  `20260714120001_team_members_rpcs_and_rls.sql`). Integrated from a
+  separate session's partial implementation; found and fixed two real
+  bugs in it before applying (wrong RLS policy names in the `DROP
+  POLICY` statements, and `getActorName()` matching the wrong field —
+  see `docs/HANDOVER.md` Session 3 for detail).
+- **Receipt-specific contact info** — Phone/Email/Website on receipts can
+  be overridden independently of the Institute tab, falling back live
+  (not copied) when not overridden. New migration
+  `20260713080000_add_receipt_contact_overrides.sql`.
+- **Selectable Payment Date** on manually recorded payments (previously
+  always stamped today's date).
+- **Batch Fee Report** — downloadable per-batch Excel export (Student
+  Name / Paid Fee / Remaining Fee).
+- **Dashboard redesign** — Collection Efficiency KPI, configurable-
+  threshold Students Needing Follow-up card (replacing Payment Modes),
+  click-through drill-down modals on Total Students/Total Collection/
+  Pending Fees, and a real fix to the Collection Trend chart (was
+  reading a hardcoded frozen date and plotting a fabricated random
+  series that wasn't even rendered).
+
+### Changed
+- Subscription page pricing text updated to ₹5,999/year (display only,
+  no billing-logic change).
+
+---
+
+## 2026-07-11 – 2026-07-12 (Session 2) — five PRs, #1–#3 merged, #4 open at the time
+
+### Fixed
+- PDF export crash: `html2canvas` couldn't parse the `oklch()` color
+  function used throughout the theme — swapped for `html2canvas-pro`.
+- Leading-zero controlled-number-input bug (batch Capacity/Monthly fee
+  fields) — same class of bug still open elsewhere, see `KNOWN_ISSUES.md`.
+- Bulk import phone validation regression — `isValidPhone` had been
+  loosened to accept any 10-digit string, dropping the `[6-9]`
+  Indian-mobile-prefix check. Restored.
+- Batch Start/End dates erroring on empty input — `fromBatch()` was
+  sending `''` into a Postgres `DATE` column; coerced to `null`.
+- Blank WhatsApp greetings — `?? "Parent"` doesn't catch an empty
+  string, and a blank parent-name field produces exactly that.
+- `audit_logs` existed as a real table but `logAudit()` only ever wrote
+  to `localStorage` — fixed to write through to both.
+
+### Added
+- Batches store one **Total Course Fee** instead of a Monthly Fee
+  (migration renames + backfills `monthlyFee * 12`).
+- Student Admission auto-fills Course Fee from the selected batch.
+- Edit Student / Archive Student, Edit Payment / Void Payment (PR #4,
+  open as of this writing — see `docs/HANDOVER.md` for full detail).
+
+### Changed
+- Fees screen: every "Pay" surface renamed to "Receive Payment".
+
+---
+
 ## 2026-07-10
 
 ### Added

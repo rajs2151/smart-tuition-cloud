@@ -78,13 +78,17 @@ Read and write" permission) to land.
 ## Staff Invitations
 
 Status:
-Pending
+Resolved (Session 3, 2026-07-14/15)
 
-Issue:
-The schema and RLS already support an owner adding a `staff` member
-(`institute_members` insert, policy-restricted to owners of that
-institute), but there's no UI for it. An owner currently has no way to add
-staff except direct SQL.
+Notes:
+Built as multi-user **Team Members** — owner/admin/teacher/accountant
+roles, invite by email, 5-seat cap (pending + active counted together),
+pending invites auto-link to the real account on first sign-in
+(provider-agnostic, keyed on `auth.users.email`). Invite/change-role/
+remove are owner-only, matching the product's permission table exactly.
+See `docs/HANDOVER.md` Session 3 for the two real bugs found and fixed
+before this was applied (wrong RLS policy names, `getActorName()`
+matching the wrong field).
 
 ---
 
@@ -135,3 +139,76 @@ could still belong to more than one institute in principle, but there's no
 institute-switcher UI for that case. Revisit only if multi-institute
 ownership/membership becomes a real product requirement — needs a design
 pass, not a quick fix.
+
+---
+
+## Pending Migrations Not Yet Applied to Production
+
+Status:
+Needs action — confirmed to have caused a real production error
+
+Issue:
+Four migrations added in Session 3 are committed to `main` but have not
+been run against the live Supabase project:
+`20260713080000_add_receipt_contact_overrides.sql`,
+`20260714120000_team_members_schema.sql`,
+`20260714120001_team_members_rpcs_and_rls.sql`,
+`20260718090000_sync_batch_course_fee.sql`. This is not a hypothetical
+risk — `institute_members.status` (added by the Team Members schema
+migration) not existing yet on the live project caused a real
+"Couldn't load your account" error in production mid-session, since
+`session.ts` treats that query failure as a genuine, recoverable error
+state. Apply via `supabase db push` or the SQL editor, in the order
+listed, before relying on any Session 3 feature end to end.
+
+---
+
+## `student.paidFee` Still Read Directly In Three Places
+
+Status:
+Flagged, not fixed
+
+Issue:
+Session 3 found and fixed a recurring bug where several screens read
+`student.paidFee` (a column reconciled by a best-effort background step)
+instead of deriving Collected live from the payments ledger — fixed on
+Student Details, Fees list, Batch Fee Report, Dashboard, Student List,
+and the individual receipt page. Grepping the codebase after those
+fixes turned up three more places with the same pattern, not yet
+touched: the WhatsApp acknowledgement subtype/pending-amount logic
+(`src/components/payment-row-menu.tsx`, `src/lib/messaging/whatsapp.ts`)
+and the recovery/reminders page (`src/routes/recovery.tsx`). Same
+staleness risk; fixing these means loading each student's payment list
+on pages that don't currently fetch it.
+
+---
+
+## Follow-up Threshold (Dashboard) Not Persisted
+
+Status:
+Working as built, may need revisiting
+
+Issue:
+The "Students Needing Follow-up" card's threshold (default ≤40%
+collected) is a plain client-side Select, reset to the default every
+session/page load — not stored per-institute. Built this way
+deliberately (a settings field + migration felt disproportionate to
+what was asked), but worth revisiting if owners want their chosen
+threshold to persist across visits/devices.
+
+---
+
+## Team Members Is Owner-Only
+
+Status:
+Working as built, matches the spec — flagging in case that changes
+
+Issue:
+Invite/change-role/remove team members are restricted to the `owner`
+role only, matching the product's own permission table (Admin/Teacher/
+Accountant are all explicitly listed as "cannot manage users"). An
+`is_owner_or_admin()` helper already exists in
+`20260714120001_team_members_rpcs_and_rls.sql` for future use — if
+Admins should also manage users, swap `is_owner` for it in the three
+RPCs (`invite_member`, `change_member_role`, `remove_member`) and update
+`can()` in `src/lib/auth/roles.ts`.

@@ -1,6 +1,6 @@
 # Project Handover
 
-_Last updated: July 12, 2026_
+_Last updated: July 18, 2026_
 
 ---
 
@@ -33,11 +33,27 @@ per-member `access_enabled` flag. Everything else (`batches`, `students`,
   institute+owner-membership creation, race-condition-free session handling
 - Per-member `access_enabled` disabled-account screen
 - Institute-level subscription status gating (`trial`/`active`/`expired`/`blocked`)
-- Dashboard, batches, students (list + detail), bulk student import
-  (spreadsheet), fees, expenses, receipts (list + detail + printable
-  receipt view), fee recovery tracking, recycle bin (soft-delete recovery),
-  settings
+- Dashboard (redesigned in Session 3 — see below), batches, students (list +
+  detail), bulk student import (spreadsheet, now creates real historical
+  payment records, not just a fee-summary snapshot), fees, expenses,
+  receipts (list + detail + printable receipt view), fee recovery
+  tracking, recycle bin (soft-delete recovery), settings
 - Full RLS-protected multi-tenancy across all data tables
+- Historical payment import (Paid Fee / Payment Date / Payment Mode /
+  Description columns), reusing the same `recordPayment()` path as manual
+  payments
+- Selectable Payment Date on manual payments (defaults to today, blocks
+  future dates)
+- Receipt-specific contact info override (Phone/Email/Website), falling
+  back live to the Institute tab's values
+- Batch Fee Report and Batch Collection Report (date-range, transaction-
+  level) downloadable Excel exports per batch
+- Multi-user Team Members (owner/admin/teacher/accountant roles, invite by
+  email, pending-invite auto-linking on first sign-in, 5-seat cap) — see
+  Session 3 below
+- Redesigned Dashboard: click-through drill-downs (Total Students by
+  standard, Total Collection by batch, Pending Fees list, Follow-up list),
+  Collection Efficiency KPI, fixed Collection Trend chart
 - PDF export (receipts, admission form) via `html2canvas-pro`, fixed to
   handle the `oklch()`/`oklab()`/`color()` colors used throughout the theme
 - Bulk student import: Student Name-only rows, robust phone normalization,
@@ -301,6 +317,171 @@ Everything below happened in this working session, in order:
    up next: unexplained pre-existing state in a session should be verified
    from scratch, not assumed safe just because it looks plausible.
 
+## Session 3 (July 13–18, 2026) — 15 commits, all pushed to `main`
+
+Working session covering: historical-payment import, a real payment-flow
+bug hunt, receipt contact overrides, multi-user Team Members, a dashboard
+redesign, a new Batch Collection Report, and — running through most of
+it — a recurring "different pages disagree on Collected/Due" bug that
+took several passes to fully stamp out. In commit order:
+
+1. **`f6d4d2f` — historical payment import.** Bulk student import already
+   supported Paid Fee/Payment Date/Payment Mode/Description columns, but
+   only wrote them onto the student's own `paid_fee` — it never created
+   an actual row in `payments`, so Payment Timeline and receipt history
+   stayed empty for imported students. Fixed by calling the same
+   `recordPayment()` manual payments use, gated on `paidFee > 0`. Found
+   and fixed a real timezone bug in the same file (`toISOString()` is
+   UTC-based, rolls back a day for part of every IST day) and consolidated
+   a private `todayLocalISO()` duplicate into the shared one in
+   `lib/format.ts`.
+2. **`30697b4` — Batch Fee Report.** New downloadable Excel report per
+   batch (Student Name / Paid Fee / Remaining Fee, sorted by highest due).
+   Reviewed and fixed the uploaded implementation before committing: it
+   used `exceljs` where the repo already had `xlsx` — tested directly
+   (wrote and inspected a real file) and confirmed `xlsx`'s free tier
+   can't do frozen panes or cell styling, so kept `exceljs` deliberately,
+   flagging the ~1MB bundle-size cost rather than silently accepting it.
+3. **`4d50734` — selectable Payment Date on manual payments.** Receive
+   Payment previously always stamped `new Date()`. Added a date field
+   (defaults today, blocks future dates, inline + toast validation).
+4. **`d1dd7b3` — receipt contact overrides.** Phone/Email/Website shown on
+   receipts can now be overridden independently of the Institute tab,
+   falling back live to the Institute tab's value when not overridden
+   (`NULL` = fallback, never a copied value, so editing the Institute tab
+   later automatically flows through). New migration + new
+   `getEffectiveReceiptContact()` resolver used by both the Settings
+   preview and the actual receipt render — one definition, not two.
+5. **`d7c7967` — duplicate-receipt bug.** Repeated clicks on "Save &
+   generate receipt" created multiple identical payments, because the
+   button had no loading state or re-entrancy guard at all. Fixed with a
+   `submitting` flag + disabled button, and added a same-day/same-amount/
+   same-mode duplicate-payment warning (confirmable, not a hard block).
+6. **`d798b0e` — two payment-flow bugs, root-caused rather than
+   patched.** (a) Import still wasn't creating payment rows for
+   historical payments in the *current* codebase state at the time (a
+   regression check caught this had drifted) — reconfirmed the fix from
+   commit 1. (b) "Save & Generate Receipt" sometimes showed an error
+   toast even though the payment and receipt were both actually created.
+   Traced the full call chain rather than guessing: `recordPayment()`
+   inserts the payment (this *is* the receipt — there's no separate
+   receipts-table write), then calls `reconcileStudentPaid()` to update
+   the student's cached `paid_fee`. That reconcile step could throw for
+   unrelated transient reasons *after* the payment had already durably
+   committed, rejecting the whole `recordPayment()` promise and making a
+   successful save look like a failure. Fixed by making
+   `reconcileStudentPaid()` best-effort (log, don't throw) — it's derived
+   cache maintenance, not the source of truth, so its failure must never
+   be reported as the triggering mutation's failure. This one fix
+   quietly repaired the same latent bug in `updatePayment`/`voidPayment`/
+   `deletePayment`/`restorePayment` too, since they all share this helper.
+7. **`ca77702` — Record Payment on Student Details did nothing.** The
+   button existed but `RecordPaymentDialog` was a private component
+   defined only inside `fees.tsx` — nothing was wired up. Extracted it
+   into `src/components/record-payment-dialog.tsx` as the one shared
+   implementation both pages now use. Also fixed Student Details' Fee
+   Summary staying frozen after a payment recorded elsewhere: traced to
+   `ensureQueryData`'s `revalidateIfStale: false` default serving a
+   merely-*flagged*-stale cache entry with no real refetch — added an
+   explicit forced refetch (later generalized, see commit 10).
+8. **`a5cc8fa` → `e646f02` → `4e706b7` → `d24d651` — the "different pages
+   disagree" bug, in four parts.** A screenshot showed Payment Timeline
+   correctly listing a new payment while Student Details' Collected/Due
+   still showed the old numbers. Root cause: several screens read
+   `student.paidFee`, a column reconciled by the (now best-effort, see
+   commit 6) background step — if that step ever fails silently for one
+   student, that column drifts out of sync with the real `payments`
+   table while everything reading `payments` directly stays correct.
+   Fixed one screen at a time as each was reported/found, always the
+   same way — derive Collected from a sum over that student's non-voided
+   payments instead of trusting the cached column:
+   - `a5cc8fa`: Student Details.
+   - `e646f02`: Fees list + Batch Fee Report (`batches.tsx` now also
+     loads `listPayments()`).
+   - `4e706b7`: Dashboard + Student List (Student List didn't load
+     payments at all before this).
+   - `d24d651`: the individual receipt page (`receipts.$id.tsx`) — found
+     by grepping for remaining `student.paidFee` reads after the
+     Dashboard/Student List fix, then hit for real in production days
+     later. This is the same bug fixed 3 separate times before it was
+     caught everywhere it existed; see **Known Issues** for the
+     confirmed-remaining spots (WhatsApp message content, the recovery
+     page) that carry the identical risk but haven't been touched yet.
+   - Alongside `4e706b7`: also widened `invalidateQueries()` to
+     `{ refetchType: "all" }` at every payment-mutating call site
+     (record/edit/void, bulk import, restore/purge from the Recycle
+     Bin, which previously didn't invalidate any query cache at all) —
+     the narrower, per-page `refetchQueries` fix from commit 7 is exactly
+     the pattern that let this slip through repeatedly, since each new
+     page needed its own manual wiring. A blanket refetch after any
+     payment mutation needs zero wiring for whatever page comes next.
+9. **`4227d40` — multi-user Team Members.** Integrated a feature built in
+   a separate session that only had a handful of files to work from
+   (schema/RPC/RLS migrations, `roles.ts`, `team/store.ts`,
+   `team-members-section.tsx`). Two real bugs found and fixed before
+   applying, not applied as uploaded:
+   - The RLS migration's `DROP POLICY` statements referenced guessed
+     policy names that don't match what the original schema migration
+     actually named them — as written, the drops would have silently
+     no-op'd and left the old, more permissive direct-write policies
+     active, letting an owner bypass `invite_member`'s validation (5-seat
+     cap, duplicate-invite check) by writing to `institute_members`
+     directly. Fixed to drop the real policy names.
+   - `getActorName()` (used to show a real name in Recent Activity
+     instead of a raw value) was written to match a real user id, but
+     the only thing actually available to it (`AuditLog.by`) is an email
+     string (`adapter.ts`'s `currentUser()` returns `getSession().email`,
+     not an id) — would never have resolved a single name. Fixed to
+     match on either.
+   Also completed the three integration tasks that session flagged as
+   blocked: added the Team tab to Settings, wired `getActorName(l.by)`
+   into Recent Activity (and `loadTeamMembers()` into `AuthGate` so the
+   lookup has data), and updated Subscription pricing text to ₹5,999/year.
+10. **`93f7410` — Dashboard redesign.** Reviewed the existing dashboard
+    first: found the Collection Trend chart was genuinely broken
+    (hardcoded `new Date("2025-11-01")` instead of the real date, plus a
+    fabricated `Math.random()`-based series that wasn't even plotted),
+    and found/removed a duplicate calculation (Top Pending Dues
+    recomputed the same per-student paid/due/% math the new Follow-up
+    card also needed — consolidated into one `withProgress` array).
+    Replaced "New Admissions This Month" with a Collection Efficiency
+    KPI and the Payment Modes pie chart with a configurable-threshold
+    "Students Needing Follow-up" card. Total Students/Total Collection/
+    Pending Fees are now clickable, opening drill-down modals (batch
+    breakdown reuses the exact array already feeding the Revenue by
+    Batch chart — no second calculation). No new Supabase queries.
+11. **`0e0f5dc` — Batch Collection Report.** New, second, additive button
+    per batch card: From/To date pickers (default to the current month)
+    + "Download Collection Report" — a transaction-level export (one row
+    per payment, no aggregation), distinct from the existing per-student
+    Batch Fee Report. New adapter function
+    `listPaymentsForBatchInRange()` queries only that batch's payments in
+    that date range server-side (via `payments.student_id`'s existing FK
+    to `students`), rather than fetching every institute payment and
+    filtering client-side.
+12. **`1cf9907` — batch fee changes weren't reaching enrolled students.**
+    Reported directly: editing a batch's Total Course Fee from ₹40,000 to
+    ₹48,000 updated the batch card but Students/Fees still showed
+    ₹40,000 for its students. Root cause: `student.courseFee`/`totalFee`
+    are copied from the batch once, at creation — independent columns,
+    not a live reference. Fixed with a new Postgres function,
+    `sync_batch_course_fee`, called from `updateBatch()` only when the
+    fee actually changes. A DB function was necessary, not just
+    convenient: `total_fee = new_fee + admission_fee` is a per-row
+    expression (`admission_fee` differs per student) that a single
+    client-side `.update()` call can't express.
+
+Full architectural pattern that recurs through commits 6–10, worth
+internalizing before touching payment/fee code again: **any student-
+or-payment total shown in the UI must be computed live from the
+`payments` table (or, for course fees, from the batch/student row
+actually being edited) — never trusted from a cached column that some
+background step maintains.** Every occurrence of this bug so far has
+looked identical: one screen shows the right number (because it happens
+to read `payments` directly), another shows a stale one (because it
+reads a cache), and the fix is always to delete the cache read, not to
+patch the cache.
+
 ---
 
 # Known Issues
@@ -370,6 +551,43 @@ Everything below happened in this working session, in order:
     `batches.tsx` in PR #1) still exists in `add-student-dialog.tsx`
     (course fee/admission fee/discount fields), `expenses.tsx`, and
     `settings.tsx` — same root cause, not yet applied there.
+13. **`student.paidFee` is still read directly (not derived from the
+    payments ledger) in three places, confirmed by grep after the
+    Session 3 Dashboard/Student List fix**: the WhatsApp acknowledgement
+    subtype/pending-amount logic (`payment-row-menu.tsx`,
+    `lib/messaging/whatsapp.ts`) and the recovery/reminders page
+    (`recovery.tsx`). Same latent-staleness risk as the bug fixed on
+    five other screens this session (see Session 3, item 8) — flagged
+    but not fixed, since each of these needs to start loading payment
+    data it doesn't currently fetch, which is a real expansion beyond
+    what was reported each time this came up. Fix the same way: sum that
+    student's non-voided payments instead of trusting the cached column.
+14. **The "Students Needing Follow-up" threshold (Dashboard) is
+    session-only, not persisted.** Implemented as a plain Select on the
+    card (20/30/40/50/60%, default 40%) rather than an institute setting,
+    since adding a settings field + migration for one dashboard filter
+    felt disproportionate to what was asked. Revisit if owners actually
+    want their chosen threshold to persist across visits/devices.
+15. **Team Members invite/role-change/remove is owner-only**, matching
+    the product's own permission table exactly (Admin/Teacher/Accountant
+    are all explicitly "cannot manage users" in the spec this was built
+    from). An `is_owner_or_admin()` helper already exists in the RLS
+    migration for future use if this is ever meant to include Admins —
+    swapping `is_owner` for it in the three RPCs plus updating `can()` in
+    `roles.ts` is a small, contained change if that decision is made.
+16. **Every migration created in Session 3 needs to actually be applied
+    to the live database** (`supabase db push`, or run manually in order
+    via the SQL editor) — see **Manual Steps Remaining**. This bit
+    directly during the session: a real "Couldn't load your account"
+    error appeared in production because `institute_members.status`
+    (added by one of these migrations) didn't exist yet on the live
+    project. Migrations sitting in `supabase/migrations/` do nothing on
+    their own.
+17. **The GitHub PAT used to push throughout Session 3 was reused across
+    essentially every push in the session** (same token pasted
+    repeatedly rather than a fresh one each time) — flagged in-session
+    multiple times. Treat it as fully exposed; rotate it before doing
+    anything else with this repo if it hasn't been rotated already.
 
 ---
 
@@ -488,6 +706,33 @@ These genuinely cannot be done from within this repo/session:
    in this session (same token pasted repeatedly rather than a fresh one
    each time). Treat it as fully exposed and rotate it.
 
+### Session 3 additions
+
+9. **Apply four new migrations to the live database, in order** — none
+   of them have been run against the live project yet:
+   - `20260713080000_add_receipt_contact_overrides.sql`
+   - `20260714120000_team_members_schema.sql`
+   - `20260714120001_team_members_rpcs_and_rls.sql`
+   - `20260718090000_sync_batch_course_fee.sql`
+   Either `supabase db push`, or run each file's SQL manually via the
+   Supabase SQL editor in the order listed. This is not hypothetical —
+   the `institute_members.status` column from the Team Members schema
+   migration not existing yet on the live project caused a real
+   "Couldn't load your account" error in production mid-session (see
+   Known Issues, item 16).
+10. **Rotate the GitHub PAT yet again** — reused across essentially every
+    push in Session 3, the same way as Session 2. If you take one action
+    from this document before anything else, make it this one.
+11. **Decide whether Admin should also be able to manage Team Members**
+    (currently owner-only, matching the spec exactly) — see Known
+    Issues, item 15, for the one-line change if the answer is yes.
+12. **Decide whether the Follow-up threshold (Dashboard) should persist**
+    per-institute instead of resetting every session — see Known Issues,
+    item 14.
+13. **Decide whether to fix the three remaining `student.paidFee`
+    reads** (WhatsApp messages, recovery page) the same way the other
+    five screens were fixed this session — see Known Issues, item 13.
+
 ---
 
 # Next Recommended Tasks
@@ -495,7 +740,7 @@ These genuinely cannot be done from within this repo/session:
 Roughly in priority order:
 
 1. Push the CI workflow (5 minutes, just needs the right token).
-2. Build a staff-invitation UI (schema/RLS already support it).
+2. ~~Build a staff-invitation UI~~ — done in Session 3 (Team Members).
 3. Enable leaked-password protection in Supabase Auth settings.
 4. Decide the fate of the second, institute-less test account.
 5. Consider adding automated end-to-end tests (sign-up → onboarding →
@@ -507,20 +752,26 @@ Roughly in priority order:
 7. Move `.env` out of version control in favor of `.env.example` +
    `.gitignore`, for normal hygiene (low urgency — nothing in it is
    actually secret today).
-8. Apply the two pending migrations to the live database, then merge PR #4
-   (both blocking items above).
+8. Apply the Session 3 migrations to the live database (see **Manual
+   Steps Remaining**, item 9) — highest-priority item below the CI
+   workflow, since features already shipped to `main` depend on them.
 9. Retrofit RLS on `students`/`payments` with a column-aware
    `BEFORE UPDATE` trigger so Edit/Void is actually enforced server-side
    for non-owners, not just hidden in the UI.
-10. Decide whether a real "Admin" role tier is needed, or whether
-    "owner-only" is the intended permanent behavior for controlled
-    editing.
+10. Decide whether a real "Admin" role tier needs elevated permissions
+    beyond what Team Members already gives it (currently: operational
+    access, no user/subscription management — see Known Issues, item 15).
 11. Migrate the Recycle Bin / Audit Log page to read from the database
     instead of `localStorage`, now that `audit_logs` is actually being
     written to.
 12. Apply the same leading-zero controlled-number-input fix from
     `batches.tsx` to `add-student-dialog.tsx`, `expenses.tsx`, and
     `settings.tsx`.
+13. Fix the three remaining `student.paidFee` reads (WhatsApp message
+    content, recovery page) the same way as the other five screens this
+    session — see Known Issues, item 13.
+14. Decide whether the Follow-up threshold should persist per-institute
+    — see Known Issues, item 14.
 
 ---
 
@@ -575,6 +826,31 @@ clicked-through in a live deployed instance by me** — that verification,
 plus the actual database migrations, is the next owner's job (see
 **Manual Steps Remaining**).
 
+### Session 3 verification
+Same constraint as Session 2 — no live database connection, no headless
+browser, from this environment. Every commit's floor was: `tsc --noEmit`
+clean, `eslint` showing zero *new* findings on every touched file
+(verified by diffing the actual finding content against each file's
+pre-change baseline, not just comparing totals — a lower or higher total
+count alone doesn't prove nothing new was introduced), and a full `vite
+build`. New SQL (4 migrations) was verified by direct code reading against
+the actual live schema (checked real policy/function/column names via
+`git`, not assumed) rather than run — none of it has been executed
+against the live project (see **Manual Steps Remaining**, item 9).
+
+Two bugs in this session were confirmed for real, not just reasoned
+about: the duplicate-receipt bug (screenshot showing 7 identical
+receipts) and the batch-fee-not-propagating bug (screenshot showing the
+batch card's new fee next to Students/Fees still showing the old one) —
+both reported with evidence, diagnosed against the actual code, fixed,
+then the fix verified against the same evidence trail rather than
+assumed correct from the diagnosis alone. The Dashboard/Student
+List/receipt-page "stale Collected" bug was instead *predicted* (found by
+grep after fixing the first few screens) before it was reported, and the
+prediction turned out correct when it did surface in production days
+later — worth noting as a case where proactively grepping for a bug
+pattern found something a report hadn't yet surfaced.
+
 ---
 
 # Handover Notes
@@ -607,6 +883,26 @@ plus the actual database migrations, is the next owner's job (see
   regenerating a file (like `types.ts`) and quietly dropping something the
   other side added. Diff carefully after any merge involving generated
   files.
+- **This environment (Session 3) had no live database or browser access
+  either** — same constraint as Session 2, worth restating since it
+  shaped how everything was verified (see **Testing Status**). If you're
+  a future session with real Supabase/browser access, use it — actually
+  clicking through the flows and applying the four pending migrations
+  (Manual Steps Remaining, item 9) is real, higher-confidence
+  verification than anything this session could do.
+- **If you're picking up right where Session 3 left off**: the four
+  migrations it added are not yet applied to the live database (Manual
+  Steps Remaining, item 9) — this already caused one real production
+  error mid-session (Known Issues, item 16) before it was diagnosed.
+  Apply them before assuming any Session 3 feature (receipt contact
+  overrides, Team Members, batch-fee-change propagation) actually works
+  end to end.
+- **The "different pages disagree on a total" bug pattern recurred
+  multiple times in Session 3** before it was fully found everywhere it
+  lived (see Session 3, item 8, and Known Issues, item 13 for the three
+  confirmed spots still not fixed). If you're asked to fix a similar
+  symptom again, grep for `student.paidFee` first — don't assume the
+  prior fixes caught every occurrence.
 - **Unexplained pre-existing sandbox state should never be trusted by
   default.** Twice in Session 2, this environment contained changes
   (once an uncommitted migration file, once a full commit) that neither
