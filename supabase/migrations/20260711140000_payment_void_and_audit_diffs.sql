@@ -20,18 +20,13 @@
 -- =========================================================
 
 ALTER TABLE public.payments
-  ADD COLUMN voided BOOLEAN NOT NULL DEFAULT false,
-  ADD COLUMN voided_at TIMESTAMPTZ,
-  ADD COLUMN voided_by UUID REFERENCES auth.users(id);
+  ADD COLUMN IF NOT EXISTS voided BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS voided_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS voided_by UUID REFERENCES auth.users(id);
 
 ALTER TABLE public.audit_logs
-  ADD COLUMN old_value JSONB,
-  ADD COLUMN new_value JSONB;
+  ADD COLUMN IF NOT EXISTS old_value JSONB,
+  ADD COLUMN IF NOT EXISTS new_value JSONB;
 
 ALTER TABLE public.students
-  ADD COLUMN date_of_birth DATE;
-
--- The Student Admission edit form needs a Date of Birth field, which this
--- schema never had a column for. Nullable, additive - no backfill needed.
-ALTER TABLE public.students
-  ADD COLUMN date_of_birth DATE;
+  ADD COLUMN IF NOT EXISTS date_of_birth DATE;
