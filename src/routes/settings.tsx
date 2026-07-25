@@ -68,11 +68,19 @@ function SettingsPage() {
 function InstituteTab() {
   const { institute } = useSettings();
   const [form, setForm] = useState(institute);
+  const [saving, setSaving] = useState(false);
   const onChange = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.value });
-  const save = () => {
-    setInstitute(form);
-    toast.success("Institute profile saved");
+  const save = async () => {
+    setSaving(true);
+    try {
+      await setInstitute(form);
+      toast.success("Institute profile saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save institute profile.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const onLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,7 +131,9 @@ function InstituteTab() {
           <Field label="GST number" value={form.gstNumber ?? ""} onChange={onChange("gstNumber")} />
         </div>
         <div className="flex justify-end">
-          <Button onClick={save}>Save changes</Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
         </div>
       </CardContent>
     </Card>
@@ -143,16 +153,24 @@ function ReceiptTab() {
   const [useInstitutePhone, setUseInstitutePhone] = useState(!receipt.phoneOverride);
   const [useInstituteEmail, setUseInstituteEmail] = useState(!receipt.emailOverride);
   const [useInstituteWebsite, setUseInstituteWebsite] = useState(!receipt.websiteOverride);
+  const [saving, setSaving] = useState(false);
 
-  const save = () => {
+  const save = async () => {
     const patch: Partial<typeof form> = {
       ...form,
       phoneOverride: useInstitutePhone ? null : form.phoneOverride?.trim() || null,
       emailOverride: useInstituteEmail ? null : form.emailOverride?.trim() || null,
       websiteOverride: useInstituteWebsite ? null : form.websiteOverride?.trim() || null,
     };
-    setReceiptConfig(patch);
-    toast.success("Receipt configuration saved");
+    setSaving(true);
+    try {
+      await setReceiptConfig(patch);
+      toast.success("Receipt configuration saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save receipt settings.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const preview = getEffectiveReceiptContact(institute, {
@@ -300,7 +318,9 @@ function ReceiptTab() {
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={save}>Save receipt settings</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save receipt settings"}
+            </Button>
           </div>
         </CardContent>
       </Card>

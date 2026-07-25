@@ -12,6 +12,7 @@ import {
   GraduationCap,
   Wallet,
   Trash2,
+  LogOut,
 } from "lucide-react";
 
 import {
@@ -26,6 +27,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import { signOut } from "@/lib/auth/session";
 
 const main = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -109,6 +111,12 @@ export function AppSidebar() {
                 <Settings />
                 <span>Settings</span>
               </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton tooltip="Log out" onClick={() => void signOut()}>
+              <LogOut />
+              <span>Log out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

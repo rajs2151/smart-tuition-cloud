@@ -106,16 +106,22 @@ export function resetSettings() {
   emit();
 }
 
-async function pushInstituteUpdate(patch: any) {
-  if (!state.institute.id) return;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function pushInstituteUpdate(patch: any): Promise<boolean> {
+  if (!state.institute.id) return false;
   const { error } = await supabase
     .from("institutes")
     .update(patch)
     .eq("id", state.institute.id);
-  if (error) console.error("[settings] institute update", error);
+  if (error) {
+    console.error("[settings] institute update", error);
+    return false;
+  }
+  return true;
 }
 
-export function setInstitute(patch: Partial<InstituteProfile>) {
+export async function setInstitute(patch: Partial<InstituteProfile>) {
+  const previous = state.institute;
   state = { ...state, institute: { ...state.institute, ...patch } };
   emit();
   const dbPatch: Record<string, unknown> = {};
@@ -126,10 +132,22 @@ export function setInstitute(patch: Partial<InstituteProfile>) {
   if ("email" in patch) dbPatch.email = patch.email;
   if ("website" in patch) dbPatch.website = patch.website;
   if ("gstNumber" in patch) dbPatch.gst_number = patch.gstNumber;
-  if (Object.keys(dbPatch).length) void pushInstituteUpdate(dbPatch);
+  if (!Object.keys(dbPatch).length) return;
+  const ok = await pushInstituteUpdate(dbPatch);
+  if (!ok) {
+    // The DB write failed — don't leave the UI showing values that were
+    // never actually saved. Roll back to what's really in the database
+    // and let the caller know, instead of silently keeping the
+    // optimistic (wrong) state around until the next hydration quietly
+    // overwrites it.
+    state = { ...state, institute: previous };
+    emit();
+    throw new Error("Couldn't save institute settings. Please try again.");
+  }
 }
 
-export function setReceiptConfig(patch: Partial<ReceiptConfig>) {
+export async function setReceiptConfig(patch: Partial<ReceiptConfig>) {
+  const previous = state.receipt;
   state = { ...state, receipt: { ...state.receipt, ...patch } };
   emit();
   const dbPatch: Record<string, unknown> = {};
@@ -144,10 +162,26 @@ export function setReceiptConfig(patch: Partial<ReceiptConfig>) {
   if ("phoneOverride" in patch) dbPatch.receipt_phone_override = patch.phoneOverride;
   if ("emailOverride" in patch) dbPatch.receipt_email_override = patch.emailOverride;
   if ("websiteOverride" in patch) dbPatch.receipt_website_override = patch.websiteOverride;
-  if (Object.keys(dbPatch).length) void pushInstituteUpdate(dbPatch);
+  if (!Object.keys(dbPatch).length) return;
+  const ok = await pushInstituteUpdate(dbPatch);
+  if (!ok) {
+    // Same reasoning as setInstitute above — this is the exact write path
+    // "Use Institute Email/Phone/Website" and their override text go
+    // through. If this silently no-ops (e.g. the column doesn't exist yet
+    // because a migration was committed but never deployed), the old
+    // behavior was: show "saved", keep the optimistic value on screen,
+    // then quietly revert to the real (unsaved) DB value on next
+    // hydration — which is precisely the reported bug. Rolling back
+    // immediately and throwing makes that failure visible right away
+    // instead of only after a refresh/relogin.
+    state = { ...state, receipt: previous };
+    emit();
+    throw new Error("Couldn't save receipt settings. Please try again.");
+  }
 }
 
-export function setMaster(patch: Partial<MasterSettings>) {
+export async function setMaster(patch: Partial<MasterSettings>) {
+  const previous = state.master;
   state = { ...state, master: { ...state.master, ...patch } };
   emit();
   const dbPatch: Record<string, unknown> = {};
@@ -155,17 +189,27 @@ export function setMaster(patch: Partial<MasterSettings>) {
   if ("boards" in patch) dbPatch.master_boards = patch.boards;
   if ("mediums" in patch) dbPatch.master_mediums = patch.mediums;
   if ("examCategories" in patch) dbPatch.master_exam_categories = patch.examCategories;
-  if (Object.keys(dbPatch).length) void pushInstituteUpdate(dbPatch);
+  if (!Object.keys(dbPatch).length) return;
+  const ok = await pushInstituteUpdate(dbPatch);
+  if (!ok) {
+    state = { ...state, master: previous };
+    emit();
+    throw new Error("Couldn't save. Please try again.");
+  }
 }
 
 export function addMasterValue(key: keyof MasterSettings, value: string) {
   const list = state.master[key] as string[];
   if (!value.trim() || list.includes(value)) return;
-  setMaster({ [key]: [...list, value] } as Partial<MasterSettings>);
+  void setMaster({ [key]: [...list, value] } as Partial<MasterSettings>).catch((e) =>
+    console.error("[settings] addMasterValue failed", e),
+  );
 }
 export function removeMasterValue(key: keyof MasterSettings, value: string) {
   const list = state.master[key] as string[];
-  setMaster({ [key]: list.filter((v) => v !== value) } as Partial<MasterSettings>);
+  void setMaster({ [key]: list.filter((v) => v !== value) } as Partial<MasterSettings>).catch((e) =>
+    console.error("[settings] removeMasterValue failed", e),
+  );
 }
 
 /**
@@ -175,7 +219,9 @@ export function removeMasterValue(key: keyof MasterSettings, value: string) {
  */
 export function nextReceiptNumber(): string {
   const n = state.receipt.nextNumber;
-  setReceiptConfig({ nextNumber: n + 1 });
+  void setReceiptConfig({ nextNumber: n + 1 }).catch((e) =>
+    console.error("[settings] nextReceiptNumber save failed", e),
+  );
   return `${state.receipt.prefix}-${String(n).padStart(4, "0")}`;
 }
 
