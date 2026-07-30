@@ -14,7 +14,7 @@ function toJsonSafe(value: unknown): Json | null {
   }
 }
 
-export type AuditEntity = "student" | "payment" | "batch" | "expense" | "category" | "receipt";
+export type AuditEntity = "student" | "payment" | "batch" | "expense" | "category" | "receipt" | "attendance";
 export type AuditAction = "create" | "update" | "delete" | "restore" | "purge" | "void";
 
 export type AuditLog = {

@@ -157,8 +157,44 @@ export type MasterSettings = {
   examCategories: ExamCategory[];
 };
 
+export type AttendanceLanguage = "English" | "Marathi";
+
+export type AttendanceSettings = {
+  language: AttendanceLanguage;
+  // "HH:MM" (24h, institute local time), or null = no cutoff — editable
+  // any time same day. Admins/owners can always edit past the lock
+  // window (enforced in the UI via can(role, ...) checks), staff/teacher
+  // cannot once it passes.
+  lockTime: string | null;
+};
+
 export type AppSettings = {
   institute: InstituteProfile;
   receipt: ReceiptConfig;
   master: MasterSettings;
+  attendance: AttendanceSettings;
+};
+
+// ---- Attendance ----
+
+export type AttendanceSessionStatus = "taken" | "holiday" | "cancelled";
+
+export type AttendanceSession = {
+  id: string;
+  instituteId: string;
+  batchId: string;
+  sessionDate: string; // ISO date, local calendar day
+  status: AttendanceSessionStatus;
+  totalStudents: number;
+  absentCount: number;
+  markedBy?: string;
+  markedAt: string;
+  updatedAt: string;
+};
+
+export type AttendanceAbsence = {
+  id: string;
+  sessionId: string;
+  studentId: string;
+  reason?: string;
 };

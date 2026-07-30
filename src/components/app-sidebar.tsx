@@ -33,6 +33,7 @@ const main = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Students", url: "/students", icon: Users },
   { title: "Batches", url: "/batches", icon: BookOpen },
+  { title: "Attendance", url: "/attendance", icon: CalendarCheck },
   { title: "Fees", url: "/fees", icon: IndianRupee },
   { title: "Expenses", url: "/expenses", icon: Wallet },
   { title: "Recovery & WhatsApp", url: "/recovery", icon: MessageCircle },
@@ -41,7 +42,6 @@ const main = [
 ];
 
 const upcoming = [
-  { title: "Attendance", url: "/attendance", icon: CalendarCheck },
   { title: "Reports", url: "/reports", icon: BarChart3 },
 ];
 

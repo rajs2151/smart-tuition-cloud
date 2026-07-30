@@ -14,6 +14,99 @@ export type Database = {
   }
   public: {
     Tables: {
+      attendance_absences: {
+        Row: {
+          created_at: string
+          id: string
+          reason: string | null
+          session_id: string
+          student_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reason?: string | null
+          session_id: string
+          student_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reason?: string | null
+          session_id?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_absences_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_absences_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_sessions: {
+        Row: {
+          absent_count: number
+          batch_id: string
+          id: string
+          institute_id: string
+          marked_at: string
+          marked_by: string | null
+          session_date: string
+          status: string
+          total_students: number
+          updated_at: string
+        }
+        Insert: {
+          absent_count?: number
+          batch_id: string
+          id?: string
+          institute_id: string
+          marked_at?: string
+          marked_by?: string | null
+          session_date: string
+          status?: string
+          total_students?: number
+          updated_at?: string
+        }
+        Update: {
+          absent_count?: number
+          batch_id?: string
+          id?: string
+          institute_id?: string
+          marked_at?: string
+          marked_by?: string | null
+          session_date?: string
+          status?: string
+          total_students?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_sessions_batch_id_fkey"
+            columns: ["batch_id"]
+            isOneToOne: false
+            referencedRelation: "batches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_institute_id_fkey"
+            columns: ["institute_id"]
+            isOneToOne: false
+            referencedRelation: "institutes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -197,6 +290,8 @@ export type Database = {
       institutes: {
         Row: {
           address: string
+          attendance_language: string
+          attendance_lock_time: string | null
           created_at: string
           created_by: string
           email: string
@@ -226,6 +321,8 @@ export type Database = {
         }
         Insert: {
           address?: string
+          attendance_language?: string
+          attendance_lock_time?: string | null
           created_at?: string
           created_by: string
           email?: string
@@ -255,6 +352,8 @@ export type Database = {
         }
         Update: {
           address?: string
+          attendance_language?: string
+          attendance_lock_time?: string | null
           created_at?: string
           created_by?: string
           email?: string
@@ -552,6 +651,18 @@ export type Database = {
         Returns: boolean
       }
       next_receipt_number: { Args: { _institute: string }; Returns: string }
+      save_attendance: {
+        Args: {
+          _batch_id: string
+          _session_date: string
+          _absent_student_ids: string[]
+        }
+        Returns: string
+      }
+      mark_attendance_status: {
+        Args: { _batch_id: string; _session_date: string; _status: string }
+        Returns: string
+      }
       sync_batch_course_fee: {
         Args: { _batch_id: string; _new_fee: number }
         Returns: undefined

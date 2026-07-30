@@ -10,7 +10,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSession } from "@/lib/auth/session";
 import { getSettings } from "@/lib/settings/store";
 import { addRecycle, logAudit, removeRecycle } from "@/lib/audit/store";
-import type { Batch, Installment, Payment, Student } from "./types";
+import type {
+  AttendanceAbsence,
+  AttendanceSession,
+  AttendanceSessionStatus,
+  Batch,
+  Installment,
+  Payment,
+  Student,
+} from "./types";
 
 const currentUser = () => getSession().email ?? "user";
 const activeInstituteId = () => {
@@ -532,4 +540,201 @@ export async function purgePayment(id: string) {
   if (data) await reconcileStudentPaid(data.student_id);
   removeRecycle("payment", id);
   logAudit({ entity: "payment", entityId: id, action: "purge", by: currentUser(), summary: `Permanently deleted payment ${data?.receipt_no ?? id}` });
+}
+
+// ============ Attendance ============
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toAttendanceSession(r: any): AttendanceSession {
+  return {
+    id: r.id,
+    instituteId: r.institute_id,
+    batchId: r.batch_id,
+    sessionDate: r.session_date,
+    status: r.status as AttendanceSessionStatus,
+    totalStudents: r.total_students ?? 0,
+    absentCount: r.absent_count ?? 0,
+    markedBy: r.marked_by ?? undefined,
+    markedAt: r.marked_at,
+    updatedAt: r.updated_at,
+  };
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toAttendanceAbsence(r: any): AttendanceAbsence {
+  return {
+    id: r.id,
+    sessionId: r.session_id,
+    studentId: r.student_id,
+    reason: r.reason ?? undefined,
+  };
+}
+
+/**
+ * Loads the marking screen's starting state for one batch+date: the
+ * session row if attendance was already taken (or marked holiday/
+ * cancelled) for that day, and the list of student ids currently marked
+ * absent. Returns session: null when attendance hasn't been touched yet
+ * for this batch+date — the grid then opens as a blank present-by-default
+ * slate rather than pre-populated (PRD §3.1).
+ */
+export async function loadAttendanceForBatch(
+  batchId: string,
+  sessionDate: string,
+): Promise<{ session: AttendanceSession | null; absentStudentIds: string[] }> {
+  const { data: sessionRow, error: sessionErr } = await supabase
+    .from("attendance_sessions")
+    .select("*")
+    .eq("batch_id", batchId)
+    .eq("session_date", sessionDate)
+    .maybeSingle();
+  if (sessionErr) throw sessionErr;
+  if (!sessionRow) return { session: null, absentStudentIds: [] };
+
+  const { data: absenceRows, error: absErr } = await supabase
+    .from("attendance_absences")
+    .select("student_id")
+    .eq("session_id", sessionRow.id);
+  if (absErr) throw absErr;
+
+  return {
+    session: toAttendanceSession(sessionRow),
+    absentStudentIds: (absenceRows ?? []).map((r) => r.student_id),
+  };
+}
+
+/**
+ * Saves attendance for one batch+date via the save_attendance RPC — one
+ * network round-trip regardless of absent count (PRD §6). Diffs against
+ * whatever was there before the save (if anything) so the audit log entry
+ * shows the actual old-absent-list → new-absent-list change, reusing the
+ * same audit infrastructure as payment/student edits (PRD §7).
+ */
+export async function saveAttendance(
+  batch: Pick<Batch, "id" | "name">,
+  sessionDate: string,
+  absentStudentIds: string[],
+): Promise<AttendanceSession> {
+  const before = await loadAttendanceForBatch(batch.id, sessionDate);
+
+  const { data: sessionId, error } = await supabase.rpc("save_attendance", {
+    _batch_id: batch.id,
+    _session_date: sessionDate,
+    _absent_student_ids: absentStudentIds,
+  });
+  if (error) throw error;
+
+  const { data: row, error: fetchErr } = await supabase
+    .from("attendance_sessions")
+    .select("*")
+    .eq("id", sessionId as string)
+    .single();
+  if (fetchErr) throw fetchErr;
+  const session = toAttendanceSession(row);
+
+  logAudit({
+    entity: "attendance",
+    entityId: session.id,
+    action: before.session ? "update" : "create",
+    by: currentUser(),
+    summary: `${before.session ? "Edited" : "Took"} attendance for ${batch.name} on ${sessionDate} · ${absentStudentIds.length} absent`,
+    oldValue: before.session ? { absentStudentIds: before.absentStudentIds } : undefined,
+    newValue: { absentStudentIds },
+  });
+
+  return session;
+}
+
+/** Marks a session as a holiday or cancelled lecture (PRD §7) — distinct
+ *  from "taken", excluded from % calculations, carries no absence list. */
+export async function markAttendanceStatus(
+  batch: Pick<Batch, "id" | "name">,
+  sessionDate: string,
+  status: Extract<AttendanceSessionStatus, "holiday" | "cancelled">,
+): Promise<AttendanceSession> {
+  const { data: sessionId, error } = await supabase.rpc("mark_attendance_status", {
+    _batch_id: batch.id,
+    _session_date: sessionDate,
+    _status: status,
+  });
+  if (error) throw error;
+
+  const { data: row, error: fetchErr } = await supabase
+    .from("attendance_sessions")
+    .select("*")
+    .eq("id", sessionId as string)
+    .single();
+  if (fetchErr) throw fetchErr;
+  const session = toAttendanceSession(row);
+
+  logAudit({
+    entity: "attendance",
+    entityId: session.id,
+    action: "update",
+    by: currentUser(),
+    summary: `Marked ${batch.name} on ${sessionDate} as ${status}`,
+  });
+
+  return session;
+}
+
+/**
+ * Sessions within a date range, for the Attendance tab dashboard and
+ * reports (daily/monthly views read straight off the denormalized
+ * total_students/absent_count columns — no aggregation query needed).
+ */
+export async function listAttendanceSessions(
+  fromDate: string,
+  toDate: string,
+  batchId?: string,
+): Promise<AttendanceSession[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  let q = supabase
+    .from("attendance_sessions")
+    .select("*")
+    .eq("institute_id", instId)
+    .gte("session_date", fromDate)
+    .lte("session_date", toDate)
+    .order("session_date", { ascending: false });
+  if (batchId) q = q.eq("batch_id", batchId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map(toAttendanceSession);
+}
+
+export interface AttendanceAbsenceRow extends AttendanceAbsence {
+  sessionDate: string;
+  batchId: string;
+}
+
+/**
+ * Absence rows within a date range, flattened with their session's date
+ * and batch (via an inner join on attendance_sessions, which is what
+ * carries institute_id — attendance_absences itself has no institute_id
+ * column, see the migration's RLS-scoping note). Used for student%/
+ * batch%/top-absentees reports, computed client-side the same way
+ * buildBatchFeeReportRows aggregates payments — no new DB views needed.
+ */
+export async function listAttendanceAbsences(
+  fromDate: string,
+  toDate: string,
+  batchId?: string,
+): Promise<AttendanceAbsenceRow[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  let q = supabase
+    .from("attendance_absences")
+    .select("*, attendance_sessions!inner(session_date, batch_id, institute_id)")
+    .eq("attendance_sessions.institute_id", instId)
+    .gte("attendance_sessions.session_date", fromDate)
+    .lte("attendance_sessions.session_date", toDate);
+  if (batchId) q = q.eq("attendance_sessions.batch_id", batchId);
+  const { data, error } = await q;
+  if (error) throw error;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => ({
+    ...toAttendanceAbsence(row),
+    sessionDate: row.attendance_sessions.session_date,
+    batchId: row.attendance_sessions.batch_id,
+  }));
 }
