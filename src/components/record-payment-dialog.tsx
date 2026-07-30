@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -54,6 +55,7 @@ export function RecordPaymentDialog({
   onRecorded?: (payment: Payment) => void;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
   const { data: fetchedStudents } = useQuery({
@@ -137,7 +139,12 @@ export function RecordPaymentDialog({
         note,
         type: "fee",
       });
-      toast.success(`Payment received · ${created.receiptNo}`);
+      toast.success(`Payment received · ${created.receiptNo}`, {
+        action: {
+          label: "View Receipt",
+          onClick: () => navigate({ to: "/receipts/$id", params: { id: created.id } }),
+        },
+      });
       setOpen(false);
       setAmount("");
       setNote("");
@@ -177,7 +184,7 @@ export function RecordPaymentDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Receive Payment</DialogTitle>
         </DialogHeader>

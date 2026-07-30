@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Search, Receipt as ReceiptIcon, Download } from "lucide-react";
+import { Search, Receipt as ReceiptIcon, Download, ChevronRight } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -68,6 +68,9 @@ function ReceiptsPage() {
         </Card>
 
         <Card>
+          <p className="border-b px-5 py-2.5 text-xs text-muted-foreground md:hidden">
+            Tap a receipt to view, print or share it.
+          </p>
           <div className="hidden md:grid grid-cols-12 gap-3 border-b px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             <div className="col-span-2">Receipt no</div>
             <div className="col-span-4">Student</div>
@@ -92,8 +95,9 @@ function ReceiptsPage() {
                 <div className="col-span-6 md:col-span-2 text-sm">{fmtDate(p.date)}</div>
                 <div className="col-span-6 md:col-span-2"><Badge variant="secondary">{p.mode}</Badge></div>
                 <div className="col-span-6 md:col-span-1 font-display font-bold text-success md:text-right">{inr(p.amount)}</div>
-                <div className="hidden md:block md:col-span-1 text-right">
-                  <ReceiptIcon className="ml-auto h-4 w-4 text-muted-foreground" />
+                <div className="col-span-2 flex items-center justify-end md:col-span-1 md:block md:text-right">
+                  <ChevronRight className="h-4 w-4 text-muted-foreground md:hidden" />
+                  <ReceiptIcon className="ml-auto hidden h-4 w-4 text-muted-foreground md:block" />
                 </div>
               </Link>
             ))}

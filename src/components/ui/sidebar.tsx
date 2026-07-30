@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
-import { PanelLeft } from "lucide-react";
+import { Menu, PanelLeft } from "lucide-react";
 
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -261,7 +261,7 @@ const SidebarTrigger = React.forwardRef<
   React.ElementRef<typeof Button>,
   React.ComponentProps<typeof Button>
 >(({ className, onClick, ...props }, ref) => {
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, isMobile } = useSidebar();
 
   return (
     <Button
@@ -269,15 +269,25 @@ const SidebarTrigger = React.forwardRef<
       data-sidebar="trigger"
       variant="ghost"
       size="icon"
-      className={cn("h-7 w-7", className)}
+      className={cn(
+        "h-7 w-7",
+        // Mobile has no persistent sidebar to learn this control from, so
+        // a bare ghost PanelLeft icon reads as decorative rather than
+        // tappable (this was reported as a real first-time-user
+        // discoverability problem). A bigger, clearly-bounded tap target
+        // with a visible surface plus the conventional hamburger icon
+        // fixes that. Desktop's existing trigger is untouched.
+        isMobile && "h-11 w-11 rounded-lg bg-accent/60 hover:bg-accent active:bg-accent",
+        className,
+      )}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
       }}
       {...props}
     >
-      <PanelLeft />
-      <span className="sr-only">Toggle Sidebar</span>
+      {isMobile ? <Menu className="h-5 w-5" /> : <PanelLeft />}
+      <span className="sr-only">Open navigation menu</span>
     </Button>
   );
 });

@@ -348,29 +348,48 @@ function RecoveryRow({ row }: { row: Row }) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <Avatar className="h-10 w-10"><AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">{initials(row.name)}</AvatarFallback></Avatar>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="font-medium">{row.name}</p>
-          {priorityBadge(row.priority)}
+    <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <Avatar className="h-10 w-10 shrink-0"><AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">{initials(row.name)}</AvatarFallback></Avatar>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium">{row.name}</p>
+            {priorityBadge(row.priority)}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {row.batch?.name ?? row.course}
+            {row.parentName ? <> · Parent: {row.parentName}</> : null}
+            {row.parentPhone || row.phone ? (
+              <>
+                {" "}
+                · <span className="font-medium">{row.parentPhone || row.phone}</span>
+              </>
+            ) : null}
+          </p>
+          {/* Pending amount was previously hidden entirely on mobile (sm:block
+              only) — surfaced here so the single most important fact on this
+              row (how much they owe) isn't lost on small screens. */}
+          <p className="mt-1 text-sm font-display font-bold text-destructive sm:hidden">
+            {inr(row.pending)} due · {(row.pct * 100).toFixed(0)}% · {row.daysSince > 365 ? "Never paid" : `${row.daysSince}d ago`}
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {row.batch?.name ?? row.course} · Parent: {row.parentName ?? "—"} · <span className="font-medium">{row.parentPhone ?? row.phone}</span>
-        </p>
       </div>
-      <div className="hidden sm:block text-right">
+      <div className="hidden text-right sm:block">
         <p className="text-[11px] text-muted-foreground">Pending</p>
         <p className="font-display font-bold text-destructive">{inr(row.pending)}</p>
         <p className="text-[11px] text-muted-foreground">{(row.pct * 100).toFixed(0)}% · {row.daysSince > 365 ? "Never paid" : `${row.daysSince}d ago`}</p>
       </div>
-      <div className="flex gap-1.5">
+      <div className="flex gap-2 sm:gap-1.5">
         <CustomMessageDialog row={row} />
-        <Button size="sm" onClick={send} className="bg-[#25D366] text-white hover:bg-[#1ebe5b]">
+        <Button
+          size="sm"
+          onClick={send}
+          className="flex-1 bg-[#25D366] text-white hover:bg-[#1ebe5b] sm:flex-none"
+        >
           <MessageCircle className="h-4 w-4" /> WhatsApp
         </Button>
         {row.mobile && (
-          <Button size="icon" variant="outline" asChild title="Call">
+          <Button size="icon" variant="outline" asChild title="Call" className="shrink-0">
             <a href={`tel:${row.mobile}`}><Phone className="h-4 w-4" /></a>
           </Button>
         )}
@@ -412,7 +431,7 @@ function CustomMessageDialog({ row }: { row: Row }) {
   return (
     <Dialog open={open} onOpenChange={onOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline">Customise</Button>
+        <Button size="sm" variant="outline" className="flex-1 sm:flex-none">Customise</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Send reminder · {row.name}</DialogTitle></DialogHeader>

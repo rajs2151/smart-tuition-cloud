@@ -146,12 +146,12 @@ function FeesPage() {
                     {s.due > 0 ? inr(s.due) : "Cleared"}
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {s.due > 0 && (
                     <Button
-                      variant="outline"
                       size="sm"
                       title="Send WhatsApp reminder"
+                      className="bg-[#25D366] text-white hover:bg-[#1ebe5b]"
                       onClick={(e) => {
                         e.preventDefault();
                         const { templates, defaults } = getMessaging();
@@ -165,7 +165,7 @@ function FeesPage() {
                         toast.success("WhatsApp reminder opened");
                       }}
                     >
-                      <MessageCircle className="h-4 w-4" />
+                      <MessageCircle className="h-4 w-4" /> WhatsApp
                     </Button>
                   )}
                   <RecordPaymentDialog
