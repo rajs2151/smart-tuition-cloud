@@ -174,11 +174,11 @@ export type Database = {
           id: string
           institute_id: string
           medium: string | null
-          total_course_fee: number
           name: string
           standard: string | null
           start_date: string | null
           strength: number | null
+          total_course_fee: number
           type: string
           updated_at: string
         }
@@ -198,11 +198,11 @@ export type Database = {
           id?: string
           institute_id: string
           medium?: string | null
-          total_course_fee?: number
           name: string
           standard?: string | null
           start_date?: string | null
           strength?: number | null
+          total_course_fee?: number
           type?: string
           updated_at?: string
         }
@@ -222,11 +222,11 @@ export type Database = {
           id?: string
           institute_id?: string
           medium?: string | null
-          total_course_fee?: number
           name?: string
           standard?: string | null
           start_date?: string | null
           strength?: number | null
+          total_course_fee?: number
           type?: string
           updated_at?: string
         }
@@ -641,6 +641,104 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      change_member_role: {
+        Args: {
+          _institute: string
+          _member_id: string
+          _role: Database["public"]["Enums"]["member_role"]
+        }
+        Returns: {
+          access_enabled: boolean
+          created_at: string
+          display_name: string | null
+          id: string
+          institute_id: string
+          invited_at: string
+          invited_by: string | null
+          invited_email: string | null
+          role: Database["public"]["Enums"]["member_role"]
+          status: string
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "institute_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_institute_with_owner: {
+        Args: {
+          _address: string
+          _email: string
+          _name: string
+          _phone: string
+        }
+        Returns: {
+          address: string
+          attendance_language: string
+          attendance_lock_time: string | null
+          created_at: string
+          created_by: string
+          email: string
+          gst_number: string | null
+          id: string
+          logo_url: string | null
+          master_boards: Json
+          master_exam_categories: Json
+          master_mediums: Json
+          master_standards: Json
+          name: string
+          phone: string
+          receipt_authorized_signatory: string
+          receipt_email_override: string | null
+          receipt_footer_text: string
+          receipt_next_number: number
+          receipt_phone_override: string | null
+          receipt_prefix: string
+          receipt_show_footer: boolean
+          receipt_show_gst: boolean
+          receipt_show_logo: boolean
+          receipt_terms: string
+          receipt_website_override: string | null
+          subscription_status: string
+          updated_at: string
+          website: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "institutes"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      invite_member: {
+        Args: {
+          _email: string
+          _institute: string
+          _name: string
+          _role: Database["public"]["Enums"]["member_role"]
+        }
+        Returns: {
+          access_enabled: boolean
+          created_at: string
+          display_name: string | null
+          id: string
+          institute_id: string
+          invited_at: string
+          invited_by: string | null
+          invited_email: string | null
+          role: Database["public"]["Enums"]["member_role"]
+          status: string
+          user_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "institute_members"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       is_member: {
         Args: { _institute: string; _user: string }
         Returns: boolean
@@ -653,46 +751,25 @@ export type Database = {
         Args: { _institute: string; _user: string }
         Returns: boolean
       }
-      next_receipt_number: { Args: { _institute: string }; Returns: string }
-      save_attendance: {
-        Args: {
-          _batch_id: string
-          _session_date: string
-          _absent_student_ids: string[]
-        }
-        Returns: string
-      }
       mark_attendance_status: {
         Args: { _batch_id: string; _session_date: string; _status: string }
         Returns: string
       }
-      sync_batch_course_fee: {
-        Args: { _batch_id: string; _new_fee: number }
-        Returns: undefined
-      }
-      create_institute_with_owner: {
-        Args: { _name: string; _phone: string; _address: string; _email: string }
-        Returns: Database["public"]["Tables"]["institutes"]["Row"]
-      }
-      invite_member: {
-        Args: {
-          _institute: string
-          _email: string
-          _name: string
-          _role: Database["public"]["Enums"]["member_role"]
-        }
-        Returns: Database["public"]["Tables"]["institute_members"]["Row"]
-      }
-      change_member_role: {
-        Args: {
-          _institute: string
-          _member_id: string
-          _role: Database["public"]["Enums"]["member_role"]
-        }
-        Returns: Database["public"]["Tables"]["institute_members"]["Row"]
-      }
+      next_receipt_number: { Args: { _institute: string }; Returns: string }
       remove_member: {
         Args: { _institute: string; _member_id: string }
+        Returns: undefined
+      }
+      save_attendance: {
+        Args: {
+          _absent_student_ids: string[]
+          _batch_id: string
+          _session_date: string
+        }
+        Returns: string
+      }
+      sync_batch_course_fee: {
+        Args: { _batch_id: string; _new_fee: number }
         Returns: undefined
       }
     }
