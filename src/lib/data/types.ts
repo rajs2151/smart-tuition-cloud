@@ -197,4 +197,9 @@ export type AttendanceAbsence = {
   sessionId: string;
   studentId: string;
   reason?: string;
+  // Set once a WhatsApp absence notice has actually been sent for this
+  // student for this session (Reports → batch → day → Notify list).
+  // Server-side so "sent" state survives a refresh / different device,
+  // not just React state.
+  notifiedAt?: string;
 };
