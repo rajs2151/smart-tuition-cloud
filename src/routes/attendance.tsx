@@ -1,23 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient, useSuspenseQuery, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  CalendarCheck,
-  CalendarOff,
-  Ban,
-  MessageCircle,
-  FileDown,
-  FileText,
-  Lock,
-} from "lucide-react";
+import { CalendarCheck, CalendarOff, Ban, MessageCircle, Lock } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -29,10 +20,11 @@ import {
 
 import { AttendanceGrid } from "@/components/attendance/attendance-grid";
 import { NotifyAbsenteesDialog } from "@/components/attendance/notify-absentees-dialog";
+import { BatchesOverview } from "@/components/attendance/reports/batches-overview";
+import { BatchDayList } from "@/components/attendance/reports/batch-day-list";
+import { DayNotifyList } from "@/components/attendance/reports/day-notify-list";
 
 import {
-  listAttendanceAbsences,
-  listAttendanceSessions,
   listBatches,
   listStudents,
   loadAttendanceForBatch,
@@ -42,13 +34,8 @@ import {
 import { useSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/roles";
 import { useSettings } from "@/lib/settings/store";
-import { fmtDate, todayLocalISO } from "@/lib/format";
-import { exportElementToPdf } from "@/lib/pdf/export";
-import {
-  buildStudentAttendanceRows,
-  downloadAttendanceReport,
-} from "@/lib/reports/attendance-report";
-import type { Batch } from "@/lib/data/types";
+import { todayLocalISO } from "@/lib/format";
+import type { AttendanceSession, Batch, Student } from "@/lib/data/types";
 
 const pageQuery = {
   queryKey: ["attendance-page"],
@@ -99,7 +86,7 @@ function AttendancePage() {
         subtitle={`${activeBatches.length} active batches`}
         actions={
           <Select value={batchId} onValueChange={setBatchId}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger className="w-full sm:w-56">
               <SelectValue placeholder="Select batch" />
             </SelectTrigger>
             <SelectContent>
@@ -143,13 +130,7 @@ function nowHHMM() {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
-function MarkAttendanceTab({
-  batch,
-  allStudents,
-}: {
-  batch: Batch;
-  allStudents: import("@/lib/data/types").Student[];
-}) {
+function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: Student[] }) {
   const qc = useQueryClient();
   const { role } = useSession();
   const { attendance: attendanceSettings } = useSettings();
@@ -243,8 +224,8 @@ function MarkAttendanceTab({
   return (
     <div className="space-y-4 pb-24">
       <Card>
-        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="flex items-center gap-3">
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
             <div>
               <p className="font-display font-bold leading-tight">{batch.name}</p>
               <p className="text-xs text-muted-foreground">
@@ -258,19 +239,20 @@ function MarkAttendanceTab({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Input
               type="date"
               value={sessionDate}
               max={todayLocalISO()}
               onChange={(e) => setSessionDate(e.target.value)}
-              className="w-40"
+              className="w-full sm:w-40"
             />
             <Button
               variant="outline"
               size="sm"
               disabled={saving}
               onClick={() => setStatus("holiday")}
+              className="flex-1 sm:flex-none"
             >
               <CalendarOff className="h-3.5 w-3.5" /> Holiday
             </Button>
@@ -279,6 +261,7 @@ function MarkAttendanceTab({
               size="sm"
               disabled={saving}
               onClick={() => setStatus("cancelled")}
+              className="flex-1 sm:flex-none"
             >
               <Ban className="h-3.5 w-3.5" /> Cancel lecture
             </Button>
@@ -309,15 +292,25 @@ function MarkAttendanceTab({
       )}
 
       {(!existingSession || existingSession.status === "taken") && (
-        <div className="sticky bottom-4 z-10 flex justify-center">
-          <Card className="shadow-lg">
-            <CardContent className="flex items-center gap-3 p-3">
-              <Button size="lg" disabled={saving || locked} onClick={save}>
+        <div className="sticky bottom-4 z-10 flex justify-center px-4 sm:px-0">
+          <Card className="w-full shadow-lg sm:w-auto">
+            <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:gap-3">
+              <Button
+                size="lg"
+                className="w-full sm:w-auto"
+                disabled={saving || locked}
+                onClick={save}
+              >
                 <CalendarCheck className="h-4 w-4" />
                 {saving ? "Saving…" : `Save Attendance (${absentIds.size} absent)`}
               </Button>
               {lastAbsentStudents.length > 0 && (
-                <Button size="lg" variant="outline" onClick={() => setNotifyOpen(true)}>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => setNotifyOpen(true)}
+                >
                   <MessageCircle className="h-4 w-4 text-[#25D366]" />
                   Notify {lastAbsentStudents.length} parent
                   {lastAbsentStudents.length > 1 ? "s" : ""}
@@ -340,199 +333,41 @@ function MarkAttendanceTab({
   );
 }
 
-function AttendanceReportsTab({
-  batches,
-  students,
-}: {
-  batches: Batch[];
-  students: import("@/lib/data/types").Student[];
-}) {
-  const today = todayLocalISO();
-  const monthStart = `${today.slice(0, 7)}-01`;
-  const [fromDate, setFromDate] = useState(monthStart);
-  const [toDate, setToDate] = useState(today);
-  const [reportBatchId, setReportBatchId] = useState<string>("all");
-  const [excelLoading, setExcelLoading] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-  const reportRef = useRef<HTMLDivElement>(null);
+function AttendanceReportsTab({ batches, students }: { batches: Batch[]; students: Student[] }) {
+  const { attendance: attendanceSettings } = useSettings();
+  const [view, setView] = useState<
+    | { level: "batches" }
+    | { level: "days"; batch: Batch }
+    | { level: "day"; batch: Batch; session: AttendanceSession }
+  >({ level: "batches" });
 
-  const filterBatchId = reportBatchId === "all" ? undefined : reportBatchId;
+  if (view.level === "days") {
+    return (
+      <BatchDayList
+        batch={view.batch}
+        onBack={() => setView({ level: "batches" })}
+        onSelectDay={(session) => setView({ level: "day", batch: view.batch, session })}
+      />
+    );
+  }
 
-  const sessionsQuery = useQuery({
-    queryKey: ["attendance-sessions-range", fromDate, toDate, filterBatchId],
-    queryFn: () => listAttendanceSessions(fromDate, toDate, filterBatchId),
-  });
-  const absencesQuery = useQuery({
-    queryKey: ["attendance-absences-range", fromDate, toDate, filterBatchId],
-    queryFn: () => listAttendanceAbsences(fromDate, toDate, filterBatchId),
-  });
-
-  const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data]);
-  const absences = useMemo(() => absencesQuery.data ?? [], [absencesQuery.data]);
-
-  const takenSessions = sessions.filter((s) => s.status === "taken");
-  const totalStudentDays = takenSessions.reduce((a, s) => a + s.totalStudents, 0);
-  const totalAbsentDays = takenSessions.reduce((a, s) => a + s.absentCount, 0);
-  const overallPct =
-    totalStudentDays > 0 ? Math.round((1 - totalAbsentDays / totalStudentDays) * 1000) / 10 : null;
-
-  const todaysSessionsBatchIds = new Set(
-    sessions.filter((s) => s.sessionDate === today).map((s) => s.batchId),
-  );
-  const notYetTakenToday = batches.filter((b) => !todaysSessionsBatchIds.has(b.id));
-
-  const studentRows = useMemo(
-    () =>
-      buildStudentAttendanceRows(
-        students.filter((s) => !filterBatchId || s.batchId === filterBatchId),
-        batches,
-        sessions,
-        absences,
-        fromDate,
-        toDate,
-      ),
-    [students, batches, sessions, absences, fromDate, toDate, filterBatchId],
-  );
-
-  const topAbsentees = [...studentRows]
-    .sort((a, b) => a.attendancePct - b.attendancePct)
-    .slice(0, 10);
-
-  const handleExcel = async () => {
-    setExcelLoading(true);
-    try {
-      await downloadAttendanceReport(studentRows, fromDate, toDate);
-      toast.success("Attendance report downloaded");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not generate the report");
-    } finally {
-      setExcelLoading(false);
-    }
-  };
-
-  const handlePdf = async () => {
-    if (!reportRef.current) return;
-    setPdfLoading(true);
-    try {
-      await exportElementToPdf(reportRef.current, `Attendance_Report_${fromDate}_to_${toDate}.pdf`);
-      toast.success("PDF downloaded");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not generate the PDF");
-    } finally {
-      setPdfLoading(false);
-    }
-  };
+  if (view.level === "day") {
+    return (
+      <DayNotifyList
+        batch={view.batch}
+        session={view.session}
+        students={students}
+        attendanceLanguage={attendanceSettings.language}
+        onBack={() => setView({ level: "days", batch: view.batch })}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardContent className="flex flex-wrap items-end gap-3 p-4">
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">From</Label>
-            <Input
-              type="date"
-              value={fromDate}
-              max={toDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="w-40"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">To</Label>
-            <Input
-              type="date"
-              value={toDate}
-              min={fromDate}
-              max={today}
-              onChange={(e) => setToDate(e.target.value)}
-              className="w-40"
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">Batch</Label>
-            <Select value={reportBatchId} onValueChange={setReportBatchId}>
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All batches</SelectItem>
-                {batches.map((b) => (
-                  <SelectItem key={b.id} value={b.id}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="ml-auto flex gap-2">
-            <Button variant="outline" size="sm" disabled={excelLoading} onClick={handleExcel}>
-              <FileDown className="h-3.5 w-3.5" /> {excelLoading ? "Generating…" : "Excel"}
-            </Button>
-            <Button variant="outline" size="sm" disabled={pdfLoading} onClick={handlePdf}>
-              <FileText className="h-3.5 w-3.5" /> {pdfLoading ? "Generating…" : "PDF"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div ref={reportRef} className="space-y-4 bg-background p-1">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Overall attendance</p>
-              <p className="font-display text-2xl font-bold">
-                {overallPct !== null ? `${overallPct}%` : "—"}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Sessions taken in range</p>
-              <p className="font-display text-2xl font-bold">{takenSessions.length}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Not yet marked today</p>
-              <p className="font-display text-2xl font-bold">
-                {notYetTakenToday.length} / {batches.length}
-              </p>
-              {notYetTakenToday.length > 0 && (
-                <p className="mt-1 truncate text-[11px] text-muted-foreground">
-                  {notYetTakenToday.map((b) => b.name).join(", ")}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Lowest attendance (top 10)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {topAbsentees.length === 0 && (
-              <p className="text-sm text-muted-foreground">No attendance data in this range yet.</p>
-            )}
-            {topAbsentees.map((r) => (
-              <div
-                key={`${r.studentName}-${r.batchName}`}
-                className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-              >
-                <div>
-                  <p className="font-medium">{r.studentName}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {r.batchName} · {r.takenSessions} sessions
-                  </p>
-                </div>
-                <Badge variant={r.attendancePct < 75 ? "destructive" : "secondary"}>
-                  {r.attendancePct}%
-                </Badge>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+    <BatchesOverview
+      batches={batches}
+      students={students}
+      onSelectBatch={(batch) => setView({ level: "days", batch })}
+    />
   );
 }

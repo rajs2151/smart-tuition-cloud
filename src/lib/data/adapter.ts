@@ -566,6 +566,7 @@ function toAttendanceAbsence(r: any): AttendanceAbsence {
     sessionId: r.session_id,
     studentId: r.student_id,
     reason: r.reason ?? undefined,
+    notifiedAt: r.notified_at ?? undefined,
   };
 }
 
@@ -737,4 +738,26 @@ export async function listAttendanceAbsences(
     sessionDate: row.attendance_sessions.session_date,
     batchId: row.attendance_sessions.batch_id,
   }));
+}
+
+/** Absences for one specific session — the Notify list (Reports → batch →
+ *  day) drills into a single day, so it only ever needs one session's rows. */
+export async function listSessionAbsences(sessionId: string): Promise<AttendanceAbsence[]> {
+  const { data, error } = await supabase
+    .from("attendance_absences")
+    .select("*")
+    .eq("session_id", sessionId);
+  if (error) throw error;
+  return (data ?? []).map(toAttendanceAbsence);
+}
+
+/** Marks one absence row as WhatsApp-notified. Server-side so the Notify
+ *  list's sent/pending split survives a refresh or a different device —
+ *  not just something remembered in React state for the current tab. */
+export async function markAbsenceNotified(absenceId: string): Promise<void> {
+  const { error } = await supabase
+    .from("attendance_absences")
+    .update({ notified_at: new Date().toISOString() })
+    .eq("id", absenceId);
+  if (error) throw error;
 }
