@@ -19,6 +19,7 @@ import { TeamMembersSection } from "@/components/settings/team-members-section";
 import {
   addMasterValue,
   removeMasterValue,
+  setAttendanceSettings,
   setInstitute,
   setReceiptConfig,
   useSettings,
@@ -44,6 +45,7 @@ function SettingsPage() {
             <TabsTrigger value="institute">Institute</TabsTrigger>
             <TabsTrigger value="receipt">Receipt</TabsTrigger>
             <TabsTrigger value="templates">Message Templates</TabsTrigger>
+            <TabsTrigger value="attendance">Attendance</TabsTrigger>
             <TabsTrigger value="academic">Academic</TabsTrigger>
             <TabsTrigger value="backend">Backend</TabsTrigger>
             <TabsTrigger value="team">Team</TabsTrigger>
@@ -53,6 +55,7 @@ function SettingsPage() {
           <TabsContent value="institute"><InstituteTab /></TabsContent>
           <TabsContent value="receipt"><ReceiptTab /></TabsContent>
           <TabsContent value="templates"><TemplatesTab /></TabsContent>
+          <TabsContent value="attendance"><AttendanceSettingsTab /></TabsContent>
           <TabsContent value="academic"><AcademicTab /></TabsContent>
           <TabsContent value="backend"><BackendTab /></TabsContent>
           <TabsContent value="team">
@@ -350,6 +353,88 @@ function ContactOverrideField({
       <div className="space-y-1.5">{children}</div>
       <p className="text-[11px] text-muted-foreground">On receipts: {preview}</p>
     </div>
+  );
+}
+
+function AttendanceSettingsTab() {
+  const { attendance } = useSettings();
+  const [language, setLanguage] = useState(attendance.language);
+  const [lockEnabled, setLockEnabled] = useState(attendance.lockTime !== null);
+  const [lockTime, setLockTime] = useState(attendance.lockTime ?? "20:00");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await setAttendanceSettings({ language, lockTime: lockEnabled ? lockTime : null });
+      toast.success("Attendance settings saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save attendance settings.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Attendance</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          Chosen once here and applied to every future attendance WhatsApp message and the
+          teacher edit window — no per-message setup needed.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-1.5">
+          <Label>Absence message language</Label>
+          <div className="flex gap-2">
+            {(["English", "Marathi"] as const).map((lang) => (
+              <Button
+                key={lang}
+                type="button"
+                variant={language === lang ? "default" : "outline"}
+                size="sm"
+                onClick={() => setLanguage(lang)}
+              >
+                {lang}
+              </Button>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Used for the built-in absence notice template sent to parents from the Attendance page.
+          </p>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="text-sm">Lock attendance edits after a time same day</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Off = teachers can edit attendance any time on the same day it was taken.
+                Owners/admins can always edit past the lock — this only restricts teacher/staff edits.
+              </p>
+            </div>
+            <Switch checked={lockEnabled} onCheckedChange={setLockEnabled} />
+          </div>
+          {lockEnabled && (
+            <Input
+              type="time"
+              value={lockTime}
+              onChange={(e) => setLockTime(e.target.value)}
+              className="w-40"
+            />
+          )}
+        </div>
+
+        <div className="flex justify-end">
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save attendance settings"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

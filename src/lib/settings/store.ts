@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   AppSettings,
+  AttendanceSettings,
   Board,
   ExamCategory,
   InstituteProfile,
@@ -51,10 +52,16 @@ export const DEFAULT_MASTER: MasterSettings = {
   examCategories: ["JEE", "NEET"],
 };
 
+export const DEFAULT_ATTENDANCE: AttendanceSettings = {
+  language: "English",
+  lockTime: null,
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
   institute: DEFAULT_INSTITUTE,
   receipt: DEFAULT_RECEIPT,
   master: DEFAULT_MASTER,
+  attendance: DEFAULT_ATTENDANCE,
 };
 
 let state: AppSettings = DEFAULT_SETTINGS;
@@ -96,6 +103,10 @@ export function hydrateSettingsFromDb(row: any) {
       boards: (row.master_boards ?? DEFAULT_MASTER.boards) as Board[],
       mediums: (row.master_mediums ?? DEFAULT_MASTER.mediums) as Medium[],
       examCategories: (row.master_exam_categories ?? DEFAULT_MASTER.examCategories) as ExamCategory[],
+    },
+    attendance: {
+      language: (row.attendance_language ?? DEFAULT_ATTENDANCE.language) as AttendanceSettings["language"],
+      lockTime: row.attendance_lock_time ?? null,
     },
   };
   emit();
@@ -180,6 +191,22 @@ export async function setReceiptConfig(patch: Partial<ReceiptConfig>) {
   }
 }
 
+export async function setAttendanceSettings(patch: Partial<AttendanceSettings>) {
+  const previous = state.attendance;
+  state = { ...state, attendance: { ...state.attendance, ...patch } };
+  emit();
+  const dbPatch: Record<string, unknown> = {};
+  if ("language" in patch) dbPatch.attendance_language = patch.language;
+  if ("lockTime" in patch) dbPatch.attendance_lock_time = patch.lockTime;
+  if (!Object.keys(dbPatch).length) return;
+  const ok = await pushInstituteUpdate(dbPatch);
+  if (!ok) {
+    state = { ...state, attendance: previous };
+    emit();
+    throw new Error("Couldn't save attendance settings. Please try again.");
+  }
+}
+
 export async function setMaster(patch: Partial<MasterSettings>) {
   const previous = state.master;
   state = { ...state, master: { ...state.master, ...patch } };
@@ -236,4 +263,4 @@ export function useSettings(): AppSettings {
   );
 }
 
-export type { Standard, Board, Medium, ExamCategory };
+export type { Standard, Board, Medium, ExamCategory, AttendanceSettings };

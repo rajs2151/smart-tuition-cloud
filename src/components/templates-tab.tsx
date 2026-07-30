@@ -41,7 +41,7 @@ export function TemplatesTab() {
 
   const grouped = useMemo(() => {
     const map: Record<TemplateCategory, MessageTemplate[]> = {
-      reminder: [], acknowledgement: [], admission: [], general: [],
+      reminder: [], acknowledgement: [], admission: [], attendance: [], general: [],
     };
     templates.forEach((t) => map[t.category].push(t));
     return map;
@@ -73,8 +73,8 @@ export function TemplatesTab() {
             <RotateCcw className="h-4 w-4" /> Restore defaults
           </Button>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
-          {(["reminder", "acknowledgement", "admission"] as const).map((cat) => (
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {(["reminder", "acknowledgement", "admission", "attendance"] as const).map((cat) => (
             <div key={cat} className="space-y-1.5">
               <Label className="text-xs">{CATEGORY_LABELS[cat]}</Label>
               <Select value={defaults[cat]} onValueChange={(v) => setDefaultTemplate(cat, v)}>

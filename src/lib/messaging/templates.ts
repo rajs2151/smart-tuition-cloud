@@ -6,6 +6,7 @@ export type TemplateCategory =
   | "reminder"
   | "acknowledgement"
   | "admission"
+  | "attendance"
   | "general";
 
 export type TemplateLanguage = "English" | "Marathi" | "Hinglish";
@@ -36,6 +37,7 @@ export const TEMPLATE_VARIABLES = [
   "ReceiptNumber",
   "PaymentDate",
   "DueDate",
+  "AttendanceDate",
 ] as const;
 export type TemplateVariable = (typeof TEMPLATE_VARIABLES)[number];
 
@@ -43,6 +45,7 @@ export const CATEGORY_LABELS: Record<TemplateCategory, string> = {
   reminder: "Fee Reminders",
   acknowledgement: "Payment Acknowledgements",
   admission: "Admission",
+  attendance: "Attendance",
   general: "General Communication",
 };
 
@@ -271,6 +274,41 @@ Regards,
 {{InstituteName}}`,
   },
 
+  // ---- Attendance ----
+  // Bilingual per PRD §9 — language is chosen once in Settings →
+  // Attendance and applied to every future attendance message; the
+  // send flow pre-selects whichever of these matches that setting.
+  {
+    id: "tpl_att_absence_en",
+    name: "Absence Notice (English)",
+    category: "attendance",
+    subType: "absence",
+    language: "English",
+    builtIn: true,
+    content:
+`Dear Parent,
+
+Your child {{StudentName}} ({{BatchName}}) was absent from class today, {{AttendanceDate}}.
+
+Regards,
+{{InstituteName}}`,
+  },
+  {
+    id: "tpl_att_absence_mr",
+    name: "Absence Notice (Marathi)",
+    category: "attendance",
+    subType: "absence",
+    language: "Marathi",
+    builtIn: true,
+    content:
+`प्रिय पालक,
+
+आपला पाल्य {{StudentName}} ({{BatchName}}) आज दिनांक {{AttendanceDate}} रोजी वर्गात अनुपस्थित होता/होती.
+
+आपले,
+{{InstituteName}}`,
+  },
+
   // ---- General ----
   {
     id: "tpl_gen_holiday",
@@ -337,10 +375,12 @@ export type DefaultTemplateMap = {
   reminder: string;
   acknowledgement: string;
   admission: string;
+  attendance: string;
 };
 
 export const DEFAULT_TEMPLATE_SELECTION: DefaultTemplateMap = {
   reminder: "tpl_friendly",
   acknowledgement: "tpl_ack_partial",
   admission: "tpl_adm_confirm",
+  attendance: "tpl_att_absence_en",
 };
