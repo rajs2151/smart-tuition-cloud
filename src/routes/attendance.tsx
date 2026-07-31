@@ -20,6 +20,7 @@ import {
 
 import { AttendanceGrid } from "@/components/attendance/attendance-grid";
 import { NotifyAbsenteesDialog } from "@/components/attendance/notify-absentees-dialog";
+import { NotifyTab } from "@/components/attendance/notify-tab";
 import { BatchesOverview } from "@/components/attendance/reports/batches-overview";
 import { BatchDayList } from "@/components/attendance/reports/batch-day-list";
 import { DayNotifyList } from "@/components/attendance/reports/day-notify-list";
@@ -41,7 +42,16 @@ const pageQuery = {
   queryKey: ["attendance-page"],
   queryFn: async () => ({
     batches: await listBatches(),
-    students: await listStudents(),
+    // includeDeleted: true — MarkAttendanceTab (the live grid) already
+    // applies its own `!s.deleted` filter client-side, so this doesn't
+    // change what's shown for taking attendance. But it DOES matter for
+    // Reports/Notify: a deleted student's attendance_absences rows still
+    // reference their student_id, and those views need to resolve that
+    // id back to a Student object to render historical rows. If this
+    // query excluded deleted students, that lookup would fail and those
+    // rows would silently vanish from history — which is the opposite of
+    // what PRD §7 asks for ("historical absence records stay intact").
+    students: await listStudents(true),
   }),
 };
 
@@ -54,6 +64,7 @@ export const Route = createFileRoute("/attendance")({
 function AttendancePage() {
   const { data } = useSuspenseQuery(pageQuery);
   const { role } = useSession();
+  const { attendance: attendanceSettings } = useSettings();
   const allowed = can(role, "attendance");
   const activeBatches = data.batches.filter((b) => !b.deleted && b.active);
 
@@ -111,12 +122,20 @@ function AttendancePage() {
             <TabsList>
               <TabsTrigger value="mark">Take Attendance</TabsTrigger>
               <TabsTrigger value="reports">Reports</TabsTrigger>
+              <TabsTrigger value="notify">Notify</TabsTrigger>
             </TabsList>
             <TabsContent value="mark">
               {batch && <MarkAttendanceTab batch={batch} allStudents={data.students} />}
             </TabsContent>
             <TabsContent value="reports">
               <AttendanceReportsTab batches={activeBatches} students={data.students} />
+            </TabsContent>
+            <TabsContent value="notify">
+              <NotifyTab
+                batches={activeBatches}
+                students={data.students}
+                attendanceLanguage={attendanceSettings.language}
+              />
             </TabsContent>
           </Tabs>
         )}

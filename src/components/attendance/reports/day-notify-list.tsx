@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { listSessionAbsences, markAbsenceNotified } from "@/lib/data/adapter";
 import { logComm, useMessaging } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, todayLocalISO } from "@/lib/format";
 import type { AttendanceLanguage, AttendanceSession, Batch, Student } from "@/lib/data/types";
 
 /**
@@ -104,6 +104,10 @@ export function DayNotifyList({
   };
 
   const sentCount = rows.filter((r) => r.absence.notifiedAt).length;
+  // Send is only ever live for today's session — this view's job for any
+  // past day is showing historical sent/pending status, not re-sending.
+  // The new top-level Notify tab is the only place with a live action.
+  const isToday = session.sessionDate === todayLocalISO();
 
   return (
     <div className="space-y-3">
@@ -155,7 +159,7 @@ export function DayNotifyList({
                   <Badge variant="secondary" className="gap-1">
                     <Check className="h-3 w-3" /> Sent
                   </Badge>
-                ) : (
+                ) : isToday ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -165,6 +169,8 @@ export function DayNotifyList({
                     <MessageCircle className="h-3.5 w-3.5 text-[#25D366]" />
                     {sendingId === absence.id ? "Opening…" : "Send WhatsApp"}
                   </Button>
+                ) : (
+                  <Badge variant="outline">Not sent</Badge>
                 )}
               </div>
             );

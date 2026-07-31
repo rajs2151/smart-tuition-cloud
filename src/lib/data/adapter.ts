@@ -761,3 +761,32 @@ export async function markAbsenceNotified(absenceId: string): Promise<void> {
     .eq("id", absenceId);
   if (error) throw error;
 }
+
+export interface TodayAbsenceRow extends AttendanceAbsence {
+  batchId: string;
+}
+
+/**
+ * All of today's absences across EVERY batch in the institute, for the
+ * Notify tab's flat table. Deliberately a separate function from
+ * listAttendanceAbsences rather than reusing it with today/today as the
+ * range — that function is designed around an optional single-batch
+ * filter for the Reports drill-down; this one is always every batch,
+ * always exactly `today`, no range or batch parameters, matching what
+ * the Notify tab actually needs.
+ */
+export async function listTodayAbsencesForInstitute(today: string): Promise<TodayAbsenceRow[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .from("attendance_absences")
+    .select("*, attendance_sessions!inner(session_date, batch_id, institute_id)")
+    .eq("attendance_sessions.institute_id", instId)
+    .eq("attendance_sessions.session_date", today);
+  if (error) throw error;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any) => ({
+    ...toAttendanceAbsence(row),
+    batchId: row.attendance_sessions.batch_id,
+  }));
+}
