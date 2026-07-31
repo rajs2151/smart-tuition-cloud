@@ -3,9 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { FileDown, FileText, ChevronRight } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
 import { listAttendanceAbsences, listAttendanceSessions } from "@/lib/data/adapter";
 import { todayLocalISO } from "@/lib/format";
@@ -54,10 +53,6 @@ export function BatchesOverview({
   const absences = useMemo(() => absencesQuery.data ?? [], [absencesQuery.data]);
 
   const takenSessions = sessions.filter((s) => s.status === "taken");
-  const totalStudentDays = takenSessions.reduce((a, s) => a + s.totalStudents, 0);
-  const totalAbsentDays = takenSessions.reduce((a, s) => a + s.absentCount, 0);
-  const overallPct =
-    totalStudentDays > 0 ? Math.round((1 - totalAbsentDays / totalStudentDays) * 1000) / 10 : null;
 
   const todaysSessionsBatchIds = useMemo(
     () => new Set(sessions.filter((s) => s.sessionDate === today).map((s) => s.batchId)),
@@ -69,9 +64,6 @@ export function BatchesOverview({
     () => buildStudentAttendanceRows(students, batches, sessions, absences, fromDate, today),
     [students, batches, sessions, absences, fromDate, today],
   );
-  const topAbsentees = [...studentRows]
-    .sort((a, b) => a.attendancePct - b.attendancePct)
-    .slice(0, 5);
 
   const batchStats = useMemo(() => {
     return batches.map((b) => {
@@ -119,15 +111,7 @@ export function BatchesOverview({
   return (
     <div className="space-y-4">
       <div ref={reportRef} className="space-y-4 bg-background">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Card>
-            <CardContent className="p-4">
-              <p className="text-xs text-muted-foreground">Overall attendance (30d)</p>
-              <p className="font-display text-2xl font-bold">
-                {overallPct !== null ? `${overallPct}%` : "—"}
-              </p>
-            </CardContent>
-          </Card>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">Sessions taken (30d)</p>
@@ -143,30 +127,6 @@ export function BatchesOverview({
             </CardContent>
           </Card>
         </div>
-
-        {topAbsentees.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Lowest attendance, last 30 days</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {topAbsentees.map((r) => (
-                <div
-                  key={`${r.studentName}-${r.batchName}`}
-                  className="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{r.studentName}</p>
-                    <p className="truncate text-xs text-muted-foreground">{r.batchName}</p>
-                  </div>
-                  <Badge variant={r.attendancePct < 75 ? "destructive" : "secondary"}>
-                    {r.attendancePct}%
-                  </Badge>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       <div className="flex justify-end gap-2">
