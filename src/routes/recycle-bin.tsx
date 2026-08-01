@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { RotateCcw, Trash2, Search, Clock } from "lucide-react";
@@ -24,8 +24,8 @@ import {
   restorePayment, purgePayment,
 } from "@/lib/data/adapter";
 import {
-  listDeletedExpenses, restoreExpense, purgeExpense, useExpenseStore,
-} from "@/lib/expenses/store";
+  listDeletedExpenses, restoreExpense, purgeExpense,
+} from "@/lib/data/adapter";
 import { fmtDate } from "@/lib/format";
 
 export const Route = createFileRoute("/recycle-bin")({
@@ -41,7 +41,6 @@ export const Route = createFileRoute("/recycle-bin")({
 function RecyclePage() {
   const qc = useQueryClient();
   useAudit();
-  useExpenseStore();
   // touch students list to ensure refresh on changes
   const [, setTick] = useState(0);
   useEffect(() => { listStudents(true); }, []);
@@ -49,7 +48,8 @@ function RecyclePage() {
   const refresh = () => setTick((n) => n + 1);
 
   const recycle = listRecycle();
-  const deletedExpenses = listDeletedExpenses();
+  const deletedExpensesQuery = useQuery({ queryKey: ["deleted-expenses"], queryFn: listDeletedExpenses });
+  const deletedExpenses = deletedExpensesQuery.data ?? [];
   const logs = listLogs();
 
   const [q, setQ] = useState("");
@@ -72,6 +72,26 @@ function RecyclePage() {
     toast.success("Permanently deleted");
     refresh();
     await qc.invalidateQueries({ refetchType: "all" });
+  };
+
+  const doRestoreExpense = async (id: string) => {
+    try {
+      await restoreExpense(id);
+      toast.success("Restored");
+      qc.invalidateQueries({ queryKey: ["deleted-expenses"] });
+      qc.invalidateQueries({ queryKey: ["expenses-page"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not restore this expense.");
+    }
+  };
+  const doPurgeExpense = async (id: string) => {
+    try {
+      await purgeExpense(id);
+      toast.success("Permanently deleted");
+      qc.invalidateQueries({ queryKey: ["deleted-expenses"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not permanently delete this expense.");
+    }
   };
 
   return (
@@ -137,10 +157,10 @@ function RecyclePage() {
                           <p className="text-xs text-muted-foreground">Deleted on {e.deletedAt ? fmtDate(e.deletedAt) : "—"} by {e.deletedBy ?? "—"}</p>
                         </div>
                         <div className="flex gap-2">
-                          <Button size="sm" variant="outline" onClick={() => { restoreExpense(e.id); toast.success("Restored"); }}>
+                          <Button size="sm" variant="outline" onClick={() => doRestoreExpense(e.id)}>
                             <RotateCcw className="mr-1 h-3.5 w-3.5" /> Restore
                           </Button>
-                          <PurgeButton onConfirm={() => { purgeExpense(e.id); toast.success("Permanently deleted"); }} />
+                          <PurgeButton onConfirm={() => doPurgeExpense(e.id)} />
                         </div>
                       </div>
                     ))}

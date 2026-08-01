@@ -19,6 +19,7 @@ import type {
   Payment,
   Student,
 } from "./types";
+import type { Expense, ExpenseCategory, ExpensePaymentMode } from "@/lib/expenses/types";
 
 const currentUser = () => getSession().email ?? "user";
 const activeInstituteId = () => {
@@ -788,5 +789,228 @@ export async function listTodayAbsencesForInstitute(today: string): Promise<Toda
   return (data ?? []).map((row: any) => ({
     ...toAttendanceAbsence(row),
     batchId: row.attendance_sessions.batch_id,
+  }));
+}
+
+// ---- Expense Categories ----
+function toExpenseCategory(r: any): ExpenseCategory {
+  return {
+    id: r.id,
+    name: r.name,
+    group: r.group_name,
+    active: !!r.active,
+    custom: !!r.custom,
+  };
+}
+
+export async function listExpenseCategories(): Promise<ExpenseCategory[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .from("expense_categories")
+    .select("*")
+    .eq("institute_id", instId)
+    .order("group_name", { ascending: true })
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(toExpenseCategory);
+}
+
+export async function addExpenseCategory(name: string, group = "Custom"): Promise<ExpenseCategory> {
+  const instId = activeInstituteId();
+  const { data, error } = await supabase
+    .from("expense_categories")
+    .insert({ institute_id: instId, name, group_name: group, custom: true })
+    .select("*")
+    .single();
+  if (error) throw error;
+  const cat = toExpenseCategory(data);
+  logAudit({ entity: "category", entityId: cat.id, action: "create", by: currentUser(), summary: `Added expense category ${cat.name}` });
+  return cat;
+}
+
+export async function renameExpenseCategory(id: string, name: string): Promise<void> {
+  const { error } = await supabase.from("expense_categories").update({ name }).eq("id", id);
+  if (error) throw error;
+  logAudit({ entity: "category", entityId: id, action: "update", by: currentUser(), summary: `Renamed expense category to ${name}` });
+}
+
+export async function toggleExpenseCategory(id: string, active: boolean): Promise<void> {
+  const { error } = await supabase.from("expense_categories").update({ active }).eq("id", id);
+  if (error) throw error;
+  logAudit({ entity: "category", entityId: id, action: "update", by: currentUser(), summary: active ? "Activated category" : "Deactivated category" });
+}
+
+/** Throws a plain, user-facing message on the FK-violation case (category
+ *  still referenced by expenses) instead of letting a raw Postgres error
+ *  surface — callers should catch and toast this. */
+export async function deleteExpenseCategory(id: string): Promise<void> {
+  const { error } = await supabase.from("expense_categories").delete().eq("id", id);
+  if (error) {
+    if (error.code === "23503") {
+      throw new Error("This category has expenses recorded against it and can't be deleted. Deactivate it instead.");
+    }
+    throw error;
+  }
+  logAudit({ entity: "category", entityId: id, action: "delete", by: currentUser(), summary: "Deleted expense category" });
+}
+
+// ---- Expenses ----
+function toExpense(r: any): Expense {
+  return {
+    id: r.id,
+    instituteId: r.institute_id,
+    date: r.date,
+    categoryId: r.category_id,
+    subCategory: r.sub_category ?? undefined,
+    amount: Number(r.amount ?? 0),
+    mode: r.mode as ExpensePaymentMode,
+    vendor: r.vendor ?? undefined,
+    description: r.description ?? undefined,
+    attachmentName: r.attachment_name ?? undefined,
+    createdAt: r.created_at,
+    createdBy: r.created_by ?? "",
+    updatedAt: r.updated_at ?? undefined,
+    updatedBy: r.updated_by ?? undefined,
+    deleted: !!r.deleted,
+    deletedAt: r.deleted_at ?? undefined,
+    deletedBy: r.deleted_by ?? undefined,
+  };
+}
+
+export async function listExpenses(includeDeleted = false): Promise<Expense[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const q = supabase.from("expenses").select("*").eq("institute_id", instId).order("date", { ascending: false });
+  const { data, error } = includeDeleted ? await q : await q.eq("deleted", false);
+  if (error) throw error;
+  return (data ?? []).map(toExpense);
+}
+
+export async function listDeletedExpenses(): Promise<Expense[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .from("expenses")
+    .select("*")
+    .eq("institute_id", instId)
+    .eq("deleted", true)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(toExpense);
+}
+
+export async function createExpense(
+  input: Omit<Expense, "id" | "instituteId" | "createdAt" | "createdBy">,
+): Promise<Expense> {
+  const instId = activeInstituteId();
+  const { data, error } = await supabase
+    .from("expenses")
+    .insert({
+      institute_id: instId,
+      category_id: input.categoryId,
+      date: input.date,
+      sub_category: input.subCategory ?? null,
+      amount: input.amount,
+      mode: input.mode,
+      vendor: input.vendor ?? null,
+      description: input.description ?? null,
+      attachment_name: input.attachmentName ?? null,
+      created_by: getSession().userId ?? null,
+    })
+    .select("*")
+    .single();
+  if (error) throw error;
+  const created = toExpense(data);
+  logAudit({ entity: "expense", entityId: created.id, action: "create", by: currentUser(), summary: `Added expense ₹${created.amount}` });
+  return created;
+}
+
+export async function updateExpense(id: string, patch: Partial<Expense>): Promise<void> {
+  const { error } = await supabase
+    .from("expenses")
+    .update({
+      ...(patch.date !== undefined ? { date: patch.date } : {}),
+      ...(patch.categoryId !== undefined ? { category_id: patch.categoryId } : {}),
+      ...(patch.subCategory !== undefined ? { sub_category: patch.subCategory } : {}),
+      ...(patch.amount !== undefined ? { amount: patch.amount } : {}),
+      ...(patch.mode !== undefined ? { mode: patch.mode } : {}),
+      ...(patch.vendor !== undefined ? { vendor: patch.vendor } : {}),
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+      ...(patch.attachmentName !== undefined ? { attachment_name: patch.attachmentName } : {}),
+      updated_by: getSession().userId ?? null,
+    })
+    .eq("id", id);
+  if (error) throw error;
+  logAudit({ entity: "expense", entityId: id, action: "update", by: currentUser(), summary: "Edited expense" });
+}
+
+export async function softDeleteExpense(id: string): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("expenses")
+    .update({ deleted: true, deleted_at: now, deleted_by: getSession().userId ?? null })
+    .eq("id", id);
+  if (error) throw error;
+  logAudit({ entity: "expense", entityId: id, action: "delete", by: currentUser(), summary: "Moved expense to recycle bin" });
+}
+
+export async function restoreExpense(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("expenses")
+    .update({ deleted: false, deleted_at: null, deleted_by: null })
+    .eq("id", id);
+  if (error) throw error;
+  logAudit({ entity: "expense", entityId: id, action: "restore", by: currentUser(), summary: "Restored expense" });
+}
+
+export async function purgeExpense(id: string): Promise<void> {
+  const { error } = await supabase.from("expenses").delete().eq("id", id);
+  if (error) throw error;
+  logAudit({ entity: "expense", entityId: id, action: "purge", by: currentUser(), summary: "Permanently deleted expense" });
+}
+
+// ---- Profitability ----
+export type ProfitabilitySummary = {
+  totalRevenue: number;
+  totalExpenses: number;
+  netProfit: number;
+  profitMarginPct: number;
+};
+
+export async function getProfitabilitySummary(from: string, to: string): Promise<ProfitabilitySummary> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return { totalRevenue: 0, totalExpenses: 0, netProfit: 0, profitMarginPct: 0 };
+  const { data, error } = await supabase
+    .rpc("get_profitability_summary", { _institute: instId, _from: from, _to: to })
+    .single();
+  if (error) throw error;
+  const row = data as any;
+  return {
+    totalRevenue: Number(row.total_revenue ?? 0),
+    totalExpenses: Number(row.total_expenses ?? 0),
+    netProfit: Number(row.net_profit ?? 0),
+    profitMarginPct: Number(row.profit_margin_pct ?? 0),
+  };
+}
+
+export type ExpenseCategoryBreakdown = {
+  categoryId: string;
+  categoryName: string;
+  groupName: string;
+  totalAmount: number;
+};
+
+export async function getExpenseBreakdownByCategory(from: string, to: string): Promise<ExpenseCategoryBreakdown[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .rpc("get_expense_breakdown_by_category", { _institute: instId, _from: from, _to: to });
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    categoryId: row.category_id,
+    categoryName: row.category_name,
+    groupName: row.group_name,
+    totalAmount: Number(row.total_amount ?? 0),
   }));
 }

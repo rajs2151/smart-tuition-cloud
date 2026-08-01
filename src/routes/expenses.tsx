@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Bar,
@@ -39,13 +40,32 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import {
-  addCategory, createExpense, deleteCategory, listCategories, listExpenses,
-  renameCategory, softDeleteExpense, toggleCategory, updateExpense, useExpenseStore,
-} from "@/lib/expenses/store";
-import type { Expense, ExpensePaymentMode } from "@/lib/expenses/types";
-import { fmtDate, inr, inrShort } from "@/lib/format";
-import { listPayments } from "@/lib/data/adapter";
-import { useSettings } from "@/lib/settings/store";
+  addExpenseCategory,
+  createExpense,
+  deleteExpenseCategory,
+  getProfitabilitySummary,
+  listExpenseCategories,
+  listExpenses,
+  renameExpenseCategory,
+  softDeleteExpense,
+  toggleExpenseCategory,
+  updateExpense,
+} from "@/lib/data/adapter";
+import type { Expense, ExpenseCategory, ExpensePaymentMode } from "@/lib/expenses/types";
+import { fmtDate, inr, inrShort, todayLocalISO } from "@/lib/format";
+
+// Matches the GENESIS_DATE convention already used in
+// components/attendance/reports/batch-day-list.tsx for "show me
+// everything, no range picker" browsing.
+const GENESIS_DATE = "2000-01-01";
+
+const pageQuery = {
+  queryKey: ["expenses-page"],
+  queryFn: async () => ({
+    expenses: await listExpenses(),
+    categories: await listExpenseCategories(),
+  }),
+};
 
 export const Route = createFileRoute("/expenses")({
   head: () => ({
@@ -54,19 +74,18 @@ export const Route = createFileRoute("/expenses")({
       { name: "description", content: "Track operating expenses, monitor profitability and export financial reports." },
     ],
   }),
+  loader: ({ context }) => context.queryClient.ensureQueryData(pageQuery),
   component: ExpensesPage,
 });
 
 const MODES: ExpensePaymentMode[] = ["Cash", "UPI", "Bank Transfer", "Cheque"];
 
 function ExpensesPage() {
-  useExpenseStore(); // subscribe
-  useSettings();
-  const expenses = listExpenses();
-  const categories = listCategories();
+  const { data } = useSuspenseQuery(pageQuery);
+  const { expenses, categories } = data;
   const [tab, setTab] = useState("dashboard");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalISO();
   const thisMonth = today.slice(0, 7);
   const thisYear = today.slice(0, 4);
 
@@ -83,7 +102,7 @@ function ExpensesPage() {
       <AppHeader
         title="Expenses"
         subtitle="Operational spend, profitability and reports"
-        actions={<ExpenseDialog />}
+        actions={<ExpenseDialog categories={categories} />}
       />
       <main className="flex-1 space-y-6 p-4 md:p-6">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -102,11 +121,11 @@ function ExpensesPage() {
             <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="dashboard" className="mt-4"><DashboardTab /></TabsContent>
-          <TabsContent value="list" className="mt-4"><ListTab /></TabsContent>
+          <TabsContent value="dashboard" className="mt-4"><DashboardTab expenses={expenses} categories={categories} /></TabsContent>
+          <TabsContent value="list" className="mt-4"><ListTab expenses={expenses} categories={categories} /></TabsContent>
           <TabsContent value="profit" className="mt-4"><ProfitTab /></TabsContent>
-          <TabsContent value="categories" className="mt-4"><CategoriesTab /></TabsContent>
-          <TabsContent value="reports" className="mt-4"><ReportsTab /></TabsContent>
+          <TabsContent value="categories" className="mt-4"><CategoriesTab categories={categories} /></TabsContent>
+          <TabsContent value="reports" className="mt-4"><ReportsTab expenses={expenses} categories={categories} /></TabsContent>
         </Tabs>
       </main>
     </>
@@ -134,9 +153,7 @@ function Stat({ label, value, icon, tone }: { label: string; value: string; icon
 }
 
 // ------------ Dashboard tab ------------
-function DashboardTab() {
-  const expenses = listExpenses();
-  const categories = listCategories();
+function DashboardTab({ expenses, categories }: { expenses: Expense[]; categories: ExpenseCategory[] }) {
   const colors = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
 
   const byCat = useMemo(() => {
@@ -218,9 +235,7 @@ function DashboardTab() {
 }
 
 // ------------ List tab ------------
-function ListTab() {
-  const expenses = listExpenses();
-  const categories = listCategories();
+function ListTab({ expenses, categories }: { expenses: Expense[]; categories: ExpenseCategory[] }) {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<string>("all");
   const [from, setFrom] = useState("");
@@ -290,7 +305,7 @@ function ListTab() {
                       <td className="p-2 text-right font-display font-bold">{inr(e.amount)}</td>
                       <td className="p-2 text-right">
                         <div className="flex justify-end gap-1">
-                          <ExpenseDialog editing={e} trigger={<Button size="icon" variant="ghost" className="h-8 w-8"><Pencil className="h-3.5 w-3.5" /></Button>} />
+                          <ExpenseDialog editing={e} categories={categories} trigger={<Button size="icon" variant="ghost" className="h-8 w-8"><Pencil className="h-3.5 w-3.5" /></Button>} />
                           <DeleteExpenseButton id={e.id} />
                         </div>
                       </td>
@@ -307,6 +322,16 @@ function ListTab() {
 }
 
 function DeleteExpenseButton({ id }: { id: string }) {
+  const qc = useQueryClient();
+  const handleDelete = async () => {
+    try {
+      await softDeleteExpense(id);
+      toast.success("Moved to Recycle Bin");
+      qc.invalidateQueries({ queryKey: ["expenses-page"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete this expense.");
+    }
+  };
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
@@ -319,7 +344,7 @@ function DeleteExpenseButton({ id }: { id: string }) {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction onClick={() => { softDeleteExpense(id); toast.success("Moved to Recycle Bin"); }}>Delete</AlertDialogAction>
+          <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
@@ -327,28 +352,39 @@ function DeleteExpenseButton({ id }: { id: string }) {
 }
 
 // ------------ Add/Edit Expense Dialog ------------
-function ExpenseDialog({ editing, trigger }: { editing?: Expense; trigger?: React.ReactNode }) {
-  const categories = listCategories().filter((c) => c.active);
+function ExpenseDialog({ editing, categories, trigger }: { editing?: Expense; categories: ExpenseCategory[]; trigger?: React.ReactNode }) {
+  const qc = useQueryClient();
+  const activeCategories = categories.filter((c) => c.active);
   const [open, setOpen] = useState(false);
-  const [date, setDate] = useState(editing?.date ?? new Date().toISOString().slice(0, 10));
-  const [categoryId, setCategoryId] = useState(editing?.categoryId ?? categories[0]?.id ?? "");
+  const [date, setDate] = useState(editing?.date ?? todayLocalISO());
+  const [categoryId, setCategoryId] = useState(editing?.categoryId ?? activeCategories[0]?.id ?? "");
   const [subCategory, setSubCategory] = useState(editing?.subCategory ?? "");
   const [amount, setAmount] = useState<number>(editing?.amount ?? 0);
   const [mode, setMode] = useState<ExpensePaymentMode>(editing?.mode ?? "Cash");
   const [vendor, setVendor] = useState(editing?.vendor ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
   const [attachmentName, setAttachmentName] = useState(editing?.attachmentName ?? "");
+  const [saving, setSaving] = useState(false);
 
-  const submit = () => {
+  const submit = async () => {
     if (!categoryId || !amount) { toast.error("Category and amount are required"); return; }
-    if (editing) {
-      updateExpense(editing.id, { date, categoryId, subCategory, amount, mode, vendor, description, attachmentName });
-      toast.success("Expense updated");
-    } else {
-      createExpense({ date, categoryId, subCategory, amount, mode, vendor, description, attachmentName });
-      toast.success("Expense added");
+    setSaving(true);
+    try {
+      if (editing) {
+        await updateExpense(editing.id, { date, categoryId, subCategory, amount, mode, vendor, description, attachmentName });
+        toast.success("Expense updated");
+      } else {
+        await createExpense({ date, categoryId, subCategory, amount, mode, vendor, description, attachmentName });
+        toast.success("Expense added");
+      }
+      qc.invalidateQueries({ queryKey: ["expenses-page"] });
+      qc.invalidateQueries({ queryKey: ["expenses-profitability"] });
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save this expense.");
+    } finally {
+      setSaving(false);
     }
-    setOpen(false);
   };
 
   return (
@@ -367,7 +403,7 @@ function ExpenseDialog({ editing, trigger }: { editing?: Expense; trigger?: Reac
             <Select value={categoryId} onValueChange={setCategoryId}>
               <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
               <SelectContent>
-                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.group} · {c.name}</SelectItem>)}
+                {activeCategories.map((c) => <SelectItem key={c.id} value={c.id}>{c.group} · {c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </Field>
@@ -389,7 +425,7 @@ function ExpenseDialog({ editing, trigger }: { editing?: Expense; trigger?: Reac
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit}>{editing ? "Save Changes" : "Add Expense"}</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? "Saving…" : editing ? "Save Changes" : "Add Expense"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -402,55 +438,79 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 // ------------ Profitability tab ------------
 function ProfitTab() {
-  const expenses = listExpenses();
-  const [data, setData] = useState<{ revenue: number; monthly: { m: string; rev: number; exp: number; profit: number }[] } | null>(null);
-
-  useEffect(() => {
-    listPayments().then((payments) => {
-      const revenue = payments.reduce((a, p) => a + p.amount, 0);
-      const months: { m: string; rev: number; exp: number; profit: number }[] = [];
+  const profitQuery = useQuery({
+    queryKey: ["expenses-profitability"],
+    queryFn: async () => {
+      const today = todayLocalISO();
+      const thisMonthStart = `${today.slice(0, 7)}-01`;
       const now = new Date();
-      for (let i = 7; i >= 0; i--) {
+
+      const monthRanges = Array.from({ length: 8 }, (_, idx) => {
+        const i = 7 - idx;
         const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        const rev = payments.filter((p) => p.date.startsWith(k)).reduce((a, p) => a + p.amount, 0);
-        const exp = expenses.filter((e) => e.date.startsWith(k)).reduce((a, e) => a + e.amount, 0);
-        months.push({ m: d.toLocaleString("en-IN", { month: "short" }), rev, exp, profit: rev - exp });
-      }
-      setData({ revenue, monthly: months });
-    });
-  }, [expenses]);
+        const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+        const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+        const end = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
+        return { label: d.toLocaleString("en-IN", { month: "short" }), start, end };
+      });
 
-  if (!data) return <p className="p-6 text-sm text-muted-foreground">Loading…</p>;
+      // One RPC call per range — arbitrary _from/_to, not fixed daily/monthly
+      // variants, per the confirmed design. All-time + this-month + one call
+      // per trend month = 10 calls total.
+      const [allTime, thisMonth, ...monthResults] = await Promise.all([
+        getProfitabilitySummary(GENESIS_DATE, today),
+        getProfitabilitySummary(thisMonthStart, today),
+        ...monthRanges.map((r) => getProfitabilitySummary(r.start, r.end)),
+      ]);
 
-  const totalExp = expenses.reduce((a, e) => a + e.amount, 0);
-  const profit = data.revenue - totalExp;
-  const thisMonth = new Date().toISOString().slice(0, 7);
-  const monthRev = data.monthly[data.monthly.length - 1]?.rev ?? 0;
-  const monthExp = data.monthly[data.monthly.length - 1]?.exp ?? 0;
-  const monthProfit = monthRev - monthExp;
+      return {
+        allTime,
+        thisMonth,
+        monthly: monthRanges.map((r, i) => ({
+          m: r.label,
+          rev: monthResults[i].totalRevenue,
+          exp: monthResults[i].totalExpenses,
+          profit: monthResults[i].netProfit,
+        })),
+      };
+    },
+  });
+
+  if (profitQuery.isLoading || !profitQuery.data) {
+    return <p className="p-6 text-sm text-muted-foreground">Loading…</p>;
+  }
+  if (profitQuery.isError) {
+    return <p className="p-6 text-sm text-destructive">Could not load profitability data.</p>;
+  }
+
+  const { allTime, thisMonth, monthly } = profitQuery.data;
 
   return (
     <div className="grid gap-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <Stat label="Total Revenue" value={inr(data.revenue)} icon={<IndianRupee className="h-4 w-4" />} tone="success" />
-        <Stat label="Total Expenses" value={inr(totalExp)} icon={<Wallet className="h-4 w-4" />} tone="warning" />
-        <Stat label={profit >= 0 ? "Net Profit" : "Net Loss"} value={inr(Math.abs(profit))} icon={<TrendingUp className="h-4 w-4" />} tone={profit >= 0 ? "primary" : "warning"} />
+        <Stat label="Total Revenue" value={inr(allTime.totalRevenue)} icon={<IndianRupee className="h-4 w-4" />} tone="success" />
+        <Stat label="Total Expenses" value={inr(allTime.totalExpenses)} icon={<Wallet className="h-4 w-4" />} tone="warning" />
+        <Stat
+          label={allTime.netProfit >= 0 ? "Net Profit" : "Net Loss"}
+          value={inr(Math.abs(allTime.netProfit))}
+          icon={<TrendingUp className="h-4 w-4" />}
+          tone={allTime.netProfit >= 0 ? "primary" : "warning"}
+        />
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <Stat label="This Month Revenue" value={inr(monthRev)} icon={<IndianRupee className="h-4 w-4" />} tone="success" />
-        <Stat label="This Month Expenses" value={inr(monthExp)} icon={<Wallet className="h-4 w-4" />} tone="warning" />
-        <Stat label="This Month Profit" value={inr(monthProfit)} icon={<TrendingUp className="h-4 w-4" />} tone="info" />
+        <Stat label="This Month Revenue" value={inr(thisMonth.totalRevenue)} icon={<IndianRupee className="h-4 w-4" />} tone="success" />
+        <Stat label="This Month Expenses" value={inr(thisMonth.totalExpenses)} icon={<Wallet className="h-4 w-4" />} tone="warning" />
+        <Stat label="This Month Profit" value={inr(thisMonth.netProfit)} icon={<TrendingUp className="h-4 w-4" />} tone="info" />
       </div>
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Profit trend (last 8 months)</CardTitle>
-          <p className="text-xs text-muted-foreground">Net Profit = Total Collection − Total Expenses</p>
+          <p className="text-xs text-muted-foreground">Net Profit = Total Revenue − Total Expenses (server-computed, revenue excludes voided payments)</p>
         </CardHeader>
         <CardContent>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.monthly} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+              <BarChart data={monthly} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
                 <XAxis dataKey="m" stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={inrShort} />
@@ -468,8 +528,8 @@ function ProfitTab() {
 }
 
 // ------------ Categories tab ------------
-function CategoriesTab() {
-  const categories = listCategories();
+function CategoriesTab({ categories }: { categories: ExpenseCategory[] }) {
+  const qc = useQueryClient();
   const [name, setName] = useState("");
   const [group, setGroup] = useState("Custom");
 
@@ -481,6 +541,50 @@ function CategoriesTab() {
     });
     return Array.from(map);
   }, [categories]);
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["expenses-page"] });
+
+  const handleToggle = async (id: string, active: boolean) => {
+    try {
+      await toggleExpenseCategory(id, active);
+      invalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update this category.");
+    }
+  };
+
+  // The FK-violation-aware handler you asked to see verbatim: deleteExpenseCategory
+  // (in adapter.ts) rethrows a plain, user-facing Error on Postgres 23503
+  // (category still referenced by expenses) instead of a raw Postgres error.
+  // This handler is async and awaits it, unlike the old synchronous
+  // deleteCategory(c.id); toast.success(...) pattern, which could never fail
+  // and would have shown a false "Category deleted" success toast on a real
+  // FK-violation failure.
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      await deleteExpenseCategory(id);
+      toast.success("Category deleted");
+      invalidate();
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : "Could not delete this category.",
+      );
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!name.trim()) { toast.error("Enter a name"); return; }
+    try {
+      await addExpenseCategory(name, group || "Custom");
+      setName("");
+      toast.success("Category added");
+      invalidate();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not add this category.");
+    }
+  };
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -498,10 +602,10 @@ function CategoriesTab() {
                       {c.custom && <span className="text-[10px] uppercase tracking-wide text-primary">Custom</span>}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Switch checked={c.active} onCheckedChange={(v) => toggleCategory(c.id, v)} />
+                      <Switch checked={c.active} onCheckedChange={(v) => handleToggle(c.id, v)} />
                       <RenameCategoryButton id={c.id} current={c.name} />
                       {c.custom && (
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => { deleteCategory(c.id); toast.success("Category deleted"); }}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => handleDeleteCategory(c.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -523,15 +627,7 @@ function CategoriesTab() {
           <Field label="Category name">
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Guest Faculty Charges" />
           </Field>
-          <Button
-            onClick={() => {
-              if (!name.trim()) { toast.error("Enter a name"); return; }
-              addCategory(name, group || "Custom");
-              setName("");
-              toast.success("Category added");
-            }}
-            className="w-full"
-          >
+          <Button onClick={handleAddCategory} className="w-full">
             <Plus className="mr-1.5 h-4 w-4" /> Add
           </Button>
         </CardContent>
@@ -541,8 +637,21 @@ function CategoriesTab() {
 }
 
 function RenameCategoryButton({ id, current }: { id: string; current: string }) {
+  const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState(current);
+
+  const save = async () => {
+    try {
+      await renameExpenseCategory(id, val);
+      setOpen(false);
+      toast.success("Renamed");
+      qc.invalidateQueries({ queryKey: ["expenses-page"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not rename this category.");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) setVal(current); }}>
       <DialogTrigger asChild>
@@ -553,7 +662,7 @@ function RenameCategoryButton({ id, current }: { id: string; current: string }) 
         <Input value={val} onChange={(e) => setVal(e.target.value)} />
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={() => { renameCategory(id, val); setOpen(false); toast.success("Renamed"); }}>Save</Button>
+          <Button onClick={save}>Save</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -561,9 +670,7 @@ function RenameCategoryButton({ id, current }: { id: string; current: string }) 
 }
 
 // ------------ Reports tab ------------
-function ReportsTab() {
-  const expenses = listExpenses();
-  const categories = listCategories();
+function ReportsTab({ expenses, categories }: { expenses: Expense[]; categories: ExpenseCategory[] }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [catFilter, setCatFilter] = useState("all");
