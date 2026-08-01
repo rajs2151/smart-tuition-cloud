@@ -1,8 +1,10 @@
 # Backend & Authentication Architecture
 
-> **Scope of this document:** this is a read-only audit. Nothing in this file
-> changes application behavior. It documents what the code and configuration
-> already do, as of commit `e9a6079`.
+> **Scope of this document:** originally a read-only audit as of commit
+> `e9a6079`. Updated since to reflect the Attendance and Expenses systems
+> (both shipped and merged to `main`) — those additions do reflect real
+> shipped behavior, not just an audit snapshot; everything else below still
+> reflects the original point-in-time audit and may have drifted further.
 
 ---
 
@@ -16,7 +18,8 @@
 6. [Backend functions (RPCs, triggers, server code)](#6-backend-functions-rpcs-triggers-server-code)
 7. [Architecture overview](#7-architecture-overview)
 8. [How to access the backend](#8-how-to-access-the-backend)
-9. [Final report](#9-final-report)
+9. [Known gaps](#9-known-gaps)
+10. [Final report](#10-final-report)
 
 ---
 
@@ -250,16 +253,24 @@ Row Level Security **enabled**.
 | `public.students` | `id` (uuid) | `institute_id → institutes(id)`, `batch_id → batches(id)` (nullable) | A student enrolled at an institute, optionally assigned to a batch. Tracks fee totals, discounts, and payment installments (as JSON). Soft-deletable. |
 | `public.payments` | `id` (uuid) | `institute_id → institutes(id)`, `student_id → students(id)` | A single fee payment record. Unique on `(institute_id, receipt_no)`. Soft-deletable. |
 | `public.receipts` | `id` (uuid) | `institute_id → institutes(id)`, `student_id → students(id)`, `payment_id → payments(id)` | A printable snapshot of a payment (amount, running balance, mode, date) — effectively an immutable receipt record separate from the mutable `payments` row. |
-| `public.audit_logs` | `id` (uuid) | `institute_id → institutes(id)`, `by_user → auth.users(id)` (nullable) | Append-only log of actions taken within an institute (entity, action, summary, who, when). |
+| `public.audit_logs` | `id` (uuid) | `institute_id → institutes(id)`, `by_user → auth.users(id)` (nullable) | Append-only log of actions taken within an institute (entity, action, summary, who, when). **Note:** the `entity` union type includes `"category"`, but as of this writing nothing in the codebase actually writes a `category`-entity row — see §9 Known Gaps. |
+| `public.attendance_sessions` | `id` (uuid) | `institute_id → institutes(id)`, `batch_id → batches(id)` | One row per batch per day attendance is taken (or explicitly marked holiday/cancelled). Unique on `(batch_id, session_date)`. Written exclusively through the `save_attendance`/`mark_attendance_status` RPCs below, never a direct client insert. |
+| `public.attendance_absences` | `id` (uuid) | `session_id → attendance_sessions(id)`, `student_id → students(id)` | One row per absent student per session. `notified_at` (added by a follow-on migration) records when a WhatsApp absence notice was actually sent for that student/session — server-side so "sent" state survives a refresh or a different device/staff member, not just local React state. |
+| `public.expense_categories` | `id` (uuid) | `institute_id → institutes(id)` | Per-institute expense categories (not a shared global table — each institute gets its own row per category so active/name/group can be customized independently). `slug` identifies a built-in default category (`NULL` for user-added custom ones) and is seeded automatically on institute creation — see the trigger table below. |
+| `public.expenses` | `id` (uuid) | `institute_id → institutes(id)`, `category_id → expense_categories(id)` **`ON DELETE RESTRICT`** | An operating-expense record. The `ON DELETE RESTRICT` on `category_id` means a category can't be deleted while any expense still references it (the UI surfaces this as "deactivate instead of delete" via a caught `23503` error, not a raw Postgres error). Soft-deletable, same convention as `batches`/`students`/`payments`. **Replaced a fully client-side, localStorage-only implementation** (`src/lib/expenses/store.ts`, since deleted) that was the confirmed root cause of a real data-loss incident — see §9 Known Gaps and `CHANGELOG.md`. |
 
 ### Enums
 
-- `public.member_role`: `'owner' | 'staff'`
+- `public.member_role`: `'owner' | 'staff' | 'admin' | 'teacher' | 'accountant'`
+  (corrected here — this was previously documented as just `'owner' | 'staff'`,
+  stale relative to the Team Members feature; verified against the live
+  schema directly, not assumed)
 
 ### Row Level Security pattern
 
 Every tenant-scoped table (`batches`, `students`, `payments`, `receipts`,
-`audit_logs`) follows the same pattern:
+`audit_logs`, `attendance_sessions`, `attendance_absences`,
+`expense_categories`, `expenses`) follows the same pattern:
 
 - **Read/write allowed only if** `public.is_member(institute_id, auth.uid())`
   returns true (a `SECURITY DEFINER` helper function that checks
@@ -267,11 +278,40 @@ Every tenant-scoped table (`batches`, `students`, `payments`, `receipts`,
 - Institute-level destructive actions (`UPDATE`/`DELETE` on `institutes`,
   managing `institute_members`) additionally require
   `public.is_owner(institute_id, auth.uid())`.
+- `attendance_absences` reads/writes are scoped one level indirectly — its
+  policies check `is_member` on the *parent session's* `institute_id` via an
+  `EXISTS` join, since the row itself has no direct `institute_id` column.
 
 This means **all access control is enforced by Postgres itself**, not by
 any application-layer check — even if a bug in the frontend forgot to filter
 by institute, the database would still refuse to return another institute's
 rows.
+
+### Standing rule: grants on every new table/RPC
+
+This isn't optional guidance — it's caused one real production bug and one
+near-miss so far, both during this build:
+
+- **Every new table** gets `REVOKE ALL ... FROM PUBLIC, anon` in the *same*
+  migration that creates it (Postgres grants some privileges to `PUBLIC` by
+  default unless explicitly revoked — this is not obvious from reading a
+  `CREATE TABLE` statement alone).
+- **Every new `SECURITY DEFINER` RPC** gets an explicit
+  `IF NOT is_member(...) THEN RAISE EXCEPTION` guard inside the function body
+  (RLS does not apply inside a `SECURITY DEFINER` function — it runs as the
+  function owner), plus `GRANT EXECUTE ... TO authenticated` with
+  `PUBLIC`/`anon` explicitly revoked.
+- **Verify via `information_schema` directly before considering any
+  migration done** — `information_schema.role_table_grants` for tables,
+  `information_schema.routine_privileges` for functions. Do not infer grant
+  state from the migration SQL alone; the attendance migration's first pass
+  left `PUBLIC`/`anon` with `EXECUTE` on `save_attendance`/
+  `mark_attendance_status` despite the SQL looking correct on read, caught
+  only by an explicit `information_schema` check afterward, and fixed by a
+  follow-on migration (see §9 Known Gaps for a related gap: that follow-on
+  migration itself wasn't committed to this repo until this doc update).
+  The expenses migration got this right from the start by including the
+  `REVOKE` in the original migration rather than as a follow-on patch.
 
 ---
 
@@ -284,14 +324,19 @@ rows.
 | `is_member(_institute, _user)` | `SECURITY DEFINER`, internal helper | Returns whether a user belongs to an institute. Used inside RLS policies. **⚠️ Was broken from migration 2 (`revoke_public_execute_on_helpers`) until the [Supabase project cutover](../CUTOVER.md):** that migration revoked `EXECUTE` on this function from `authenticated` and nothing ever re-granted it, so every RLS-protected query for a real signed-in user failed with `permission denied for function is_member` — this was confirmed by directly simulating an authenticated request and has since been fixed by migration `20260709055109_fix_authenticated_execute_grants.sql`. |
 | `is_owner(_institute, _user)` | `SECURITY DEFINER`, internal helper | Returns whether a user is the `owner` of an institute. Used inside RLS policies. Same missing-grant bug as `is_member` above, fixed by the same migration. |
 | `next_receipt_number(_institute)` | `SECURITY DEFINER`, callable RPC | Atomically increments and returns the next formatted receipt number for an institute (e.g. `REC-1002`). Called from `src/lib/data/adapter.ts` when recording a payment. Was over-permissively granted to `PUBLIC`/`anon` (flagged by Supabase's security advisor); tightened to `authenticated`-only by the same migration. |
-| `create_institute_with_owner(_name, _phone, _address, _email)` | `SECURITY DEFINER`, callable RPC | **Added in the latest fix.** Atomically creates an `institutes` row and its owner `institute_members` row in a single transaction; idempotent (returns the existing institute if the caller already owns one). Called from `CreateInstituteScreen` in `auth-gate.tsx` instead of a client-side check-then-insert, to eliminate a duplicate-institute race condition. |
+| `create_institute_with_owner(_name, _phone, _address, _email)` | `SECURITY DEFINER`, callable RPC | Atomically creates an `institutes` row and its owner `institute_members` row in a single transaction; idempotent (returns the existing institute if the caller already owns one). Called from `CreateInstituteScreen` in `auth-gate.tsx` instead of a client-side check-then-insert, to eliminate a duplicate-institute race condition. |
+| `save_attendance(_batch_id, _session_date, _absent_student_ids)` | `SECURITY DEFINER`, callable RPC | Upserts an `attendance_sessions` row (status `'taken'`) and replaces its `attendance_absences` rows. Two guards inside the function body (not relying on RLS, since `SECURITY DEFINER` bypasses it): `is_member(institute_id, auth.uid())` — rejects a non-member with `'not a member of institute %'` — and a cross-batch check that every id in `_absent_student_ids` actually belongs to `_batch_id`, rejecting a mismatch with `'one or more student ids do not belong to batch %'`. Both guards verified live against production with real (non-member / cross-batch) test calls, not just read from the SQL. |
+| `mark_attendance_status(_batch_id, _session_date, _status)` | `SECURITY DEFINER`, callable RPC | Same upsert pattern as `save_attendance`, for marking a session `'holiday'` or `'cancelled'` instead of taking attendance (zeroes out `absent_count`, clears any existing absence rows for that session). Same `is_member` guard. |
+| `get_profitability_summary(_institute, _from, _to)` | `SECURITY DEFINER`, `STABLE`, callable RPC | Returns `total_revenue`/`total_expenses`/`net_profit`/`profit_margin_pct` for an arbitrary date range. Revenue = `SUM(payments.amount)` excluding `deleted`/`voided`; expenses = `SUM(expenses.amount)` excluding `deleted`. Same `is_member` guard as the attendance RPCs. Verified live: RPC output matched an independent manual `SUM(payments)-SUM(expenses)` calc exactly, using a real synthetic expense inserted and rolled back inside a transaction against real production payment data. |
+| `get_expense_breakdown_by_category(_institute, _from, _to)` | `SECURITY DEFINER`, `STABLE`, callable RPC | Returns one row per category with a summed `total_amount` for an arbitrary date range, joined against `expense_categories` for the display name/group. Same `is_member` guard. |
 
 ### Triggers
 
 | Trigger | Table | Fires | What it does |
 |---|---|---|---|
 | `trg_institute_created_add_owner` | `institutes` | `AFTER INSERT` | Calls `add_creator_as_owner()`, which inserts the creating user as `owner` into `institute_members`. (This replaced two separate, redundant triggers — `on_institute_created` and `trg_add_creator_as_owner` — that existed briefly in migration history; only one trigger does this job now.) |
-| `trg_institutes_updated` / `trg_batches_updated` / `trg_students_updated` / `trg_payments_updated` | `institutes` / `batches` / `students` / `payments` | `BEFORE UPDATE` | Calls `set_updated_at()`, which sets `updated_at = now()` on every update. |
+| `trg_institutes_updated` / `trg_batches_updated` / `trg_students_updated` / `trg_payments_updated` / `trg_attendance_sessions_updated` / `trg_expense_categories_updated` / `trg_expenses_updated` | `institutes` / `batches` / `students` / `payments` / `attendance_sessions` / `expense_categories` / `expenses` | `BEFORE UPDATE` | Calls `set_updated_at()`, which sets `updated_at = now()` on every update. |
+| `trg_institute_created_seed_expense_categories` | `institutes` | `AFTER INSERT` | Calls `seed_default_expense_categories()`, which inserts the 24 default expense categories (`ON CONFLICT (institute_id, slug) DO NOTHING`, so it's safe to fire more than once) for the newly-created institute. Mirrors `add_creator_as_owner`'s mechanism above. The two institutes that existed before this trigger was added were backfilled once, directly, in the same migration. |
 
 ### Edge Functions
 
@@ -343,7 +388,7 @@ flowchart TB
     subgraph Supabase["Supabase Project"]
         GoTrue["Supabase Auth\n(auth.users, JWT issuance)"]
         PostgREST["PostgREST API\n(auto-generated REST over Postgres)"]
-        DB[("Postgres Database\ninstitutes / institute_members /\nbatches / students / payments /\nreceipts / audit_logs")]
+        DB[("Postgres Database\ninstitutes / institute_members /\nbatches / students / payments /\nreceipts / audit_logs / attendance_sessions /\nattendance_absences / expense_categories / expenses")]
         RLS["Row Level Security policies\n+ SECURITY DEFINER functions"]
     end
 
@@ -408,6 +453,29 @@ may auto-detect and override this via its own build integration, or a
 Vercel project settings — this repository alone doesn't show which is in
 effect. Worth checking Vercel's project build logs/settings directly to
 confirm which output target is actually being produced.
+
+### Routes/components added (Attendance & Expenses)
+
+- **`/attendance`** (`src/routes/attendance.tsx`) — three tabs: **Take
+  Attendance** (per-batch roll-call grid, `save_attendance`/
+  `mark_attendance_status`), **Reports** (`src/components/attendance/reports/`
+  — `batches-overview.tsx` → `batch-day-list.tsx` → `day-notify-list.tsx`
+  drill-down), and **Notify** (`src/components/attendance/notify-tab.tsx` —
+  flat, today-only, cross-batch absentee list with a live per-row WhatsApp
+  send action; `day-notify-list.tsx`'s own live-send button is now scoped
+  to *today's* session only, with a read-only sent/not-sent badge for past
+  days, since Notify is the single live-send surface).
+- **`/expenses`** (`src/routes/expenses.tsx`) — rewritten from a fully
+  client-side (`localStorage`) implementation onto `react-query` +
+  `src/lib/data/adapter.ts`. Same five tabs as before (Dashboard, All
+  Expenses, Profitability, Categories, Reports); `ProfitTab` now calls
+  `get_profitability_summary` (10 RPC calls: all-time, this-month, and one
+  per month of the 8-month trend) instead of computing revenue/expense
+  totals from a client-side `listPayments()` fetch.
+- **`src/routes/recycle-bin.tsx`**'s "Deleted Expenses" tab moved from the
+  retired `expenses/store.ts` onto the same adapter functions, via
+  `react-query` — an unavoidable consequence of retiring that file, not a
+  planned scope item on its own.
 
 ---
 
@@ -488,22 +556,80 @@ GitHub access does **not** give you:
 
 ---
 
-## 9. Final report
+## 9. Known gaps
+
+Stated plainly rather than glossed over — these are real, current gaps as of
+the Expenses system shipping, not resolved just because they're documented:
+
+- **`audit_logs.entity = "category"` is dead code.** The `AuditEntity` union
+  in `src/lib/audit/store.ts` includes `"category"` as a valid value, and
+  the expenses adapter's category CRUD functions (`addExpenseCategory`,
+  `renameExpenseCategory`, `toggleExpenseCategory`, `deleteExpenseCategory`)
+  do call `logAudit({ entity: "category", ... })` — so as of the Expenses
+  system, this path is now actually exercised. Confirmed via a live query:
+  before the Expenses system shipped, `audit_logs` had exactly 6 rows, all
+  `entity = 'attendance'` — zero `'category'` rows existed anywhere, ever.
+- **Messaging templates remain localStorage-only.** `src/lib/messaging/store.ts`
+  persists to `localStorage`, not Supabase — flagged during the Attendance
+  build (a `mergeTemplates`/`resolveDefaults` fix was added so existing
+  localStorage state doesn't silently miss new built-in templates, but the
+  underlying storage is still local, not server-side). Not yet fixed. The
+  same category of bug that caused the Expenses data-loss incident (see
+  below) could recur here if a user's browser data is lost or they switch
+  devices/browsers.
+- **Two duplicate `institutes` rows, both named "Dnyanpeeth Classes."**
+  Found during the Expenses migration work (`5577d52e-84da-4272-8f58-c621cf115c63`
+  and `ca9b2db1-3a4d-4f38-ba97-f716598bb86b`). Not touched or acted on —
+  explicitly waiting on the account owner to determine whether this is
+  intentional (e.g. a deliberate test/duplicate account) before anyone
+  merges, deletes, or otherwise modifies either row.
+- **Expenses were, until this system shipped, entirely client-side
+  localStorage** (`src/lib/expenses/store.ts`/`defaults.ts`, both since
+  deleted). This was the confirmed root cause of a real data-loss report —
+  a user's previously-entered expense data appeared to vanish, which traced
+  back to `localStorage` being strictly per-browser-origin (most likely
+  explanation: viewing the app from a different deployment URL than
+  whichever origin the data was originally entered under). Confirmed via
+  direct code trace (zero Supabase calls anywhere in the old store) and a
+  live `audit_logs` query (zero `entity='expense'` rows existed, so there
+  was never anything restorable server-side either). Anyone working on this
+  codebase should not assume expenses are still client-only going forward —
+  they are now fully server-persisted, exactly like every other financial
+  table.
+- **The `REVOKE ... FROM PUBLIC, anon` fix for `save_attendance`/
+  `mark_attendance_status`** was applied directly to production during the
+  Attendance build but was never committed as a migration file until this
+  documentation pass — `supabase/migrations/20260730060000_revoke_public_anon_execute_attendance.sql`
+  now exists to close that gap, applying it again against the (already
+  patched) live database is a safe no-op.
+
+---
+
+## 10. Final report
 
 1. **Backend technology:** Supabase (Postgres + Supabase Auth + auto-generated
    PostgREST API). No custom backend server, no Edge Functions, no
    currently-active TanStack Start server functions.
-2. **Database:** Supabase-hosted Postgres. Seven tables total (six defined in
-   this repo's migrations — `institutes`, `institute_members`, `batches`,
-   `students`, `payments`, `receipts`, `audit_logs` — plus Supabase's built-in
-   `auth.users`). Fully protected by Row Level Security.
+2. **Database:** Supabase-hosted Postgres. Eleven tables total (ten defined
+   in this repo's migrations — `institutes`, `institute_members`, `batches`,
+   `students`, `payments`, `receipts`, `audit_logs`, `attendance_sessions`,
+   `attendance_absences`, `expense_categories`, `expenses` — plus Supabase's
+   built-in `auth.users`). Fully protected by Row Level Security.
 3. **Authentication provider:** Supabase Auth, using email + password
    (`signUp` / `signInWithPassword`). No third-party OAuth is currently wired
    up (a prior Google OAuth implementation — first via a Lovable Cloud broker,
    then via Supabase's native Google provider — was replaced with
    email/password in the most recent commits).
-4. **Hosting platform:** Vercel (frontend + SSR), Supabase Cloud (database +
-   auth). No evidence of any other hosting/infra in the codebase.
+4. **Hosting platform:** the build config (`vite.config.ts`'s
+   `@lovable.dev/vite-tanstack-config`, and `npm run build`'s generated
+   `.output/server/wrangler.json`) targets **Cloudflare Workers** via nitro,
+   not Vercel as this document previously stated — corrected here after
+   directly observing the actual build output during the Attendance/Expenses
+   work, not assumed. Supabase Cloud remains the database + auth host either
+   way. Whether this reflects an actual platform migration from Vercel at
+   some point, or this document was simply wrong from the start, isn't
+   established here — worth a quick confirmation with whoever manages
+   deployment.
 5. **Where user accounts are stored:** Supabase's built-in `auth.users` table.
    No custom `users`/`profiles` table exists.
 6. **Coaching owners — Auth vs. database table:** **Both, by design.**

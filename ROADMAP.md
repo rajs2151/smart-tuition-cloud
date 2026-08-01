@@ -34,6 +34,10 @@ a new task list. Update in place as items complete or priorities shift.
 - [x] Batch Total Course Fee changes now propagate to every enrolled
   student — done (2026-07-18, Session 3); previously a student's fee was
   only copied from the batch at creation and never updated afterward
+- [x] Expenses moved from client-side `localStorage` to fully
+  server-persisted (Session 4, 2026-07-31) — the localStorage-only
+  implementation was the confirmed root cause of a real user-reported
+  data-loss incident. See `docs/HANDOVER.md` Session 4.
 - [ ] Apply Session 3's four pending migrations to the live database —
   see `KNOWN_ISSUES.md` ("Pending Migrations Not Yet Applied to
   Production"); this already caused one real production error
@@ -64,7 +68,12 @@ a new task list. Update in place as items complete or priorities shift.
   actual codebase. Remaining gap: the pending-amount figures fed into
   these messages still read the same stale `student.paidFee` column
   fixed elsewhere this session — see `KNOWN_ISSUES.md`.
-- [ ] Attendance tracking (per batch/student)
+- [x] Attendance tracking (per batch/student) — done (Session 4,
+  2026-07-30/31): per-batch daily roll-call, holiday/cancelled marking,
+  a Reports drill-down, a persistent WhatsApp notify flow
+  (`attendance_absences.notified_at`, server-side so "sent" state
+  survives a refresh/different device), and a top-level cross-batch
+  Notify tab. See `docs/HANDOVER.md` Session 4.
 - [ ] SMS (likely overlapping use case with WhatsApp — decide if both are
   needed or one supersedes the other)
 

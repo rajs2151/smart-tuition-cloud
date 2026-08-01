@@ -212,3 +212,92 @@ Accountant are all explicitly listed as "cannot manage users"). An
 Admins should also manage users, swap `is_owner` for it in the three
 RPCs (`invite_member`, `change_member_role`, `remove_member`) and update
 `can()` in `src/lib/auth/roles.ts`.
+
+---
+
+## Expenses Were Client-Side Only (`localStorage`)
+
+Status:
+Resolved (Session 4, 2026-07-31)
+
+Notes:
+Confirmed root cause of a real user-reported data-loss incident —
+`src/lib/expenses/store.ts`/`defaults.ts` persisted to browser
+`localStorage` only, never Supabase. Confirmed via direct code trace (zero
+Supabase calls in the file) and a live `audit_logs` query (zero
+`entity='expense'` rows ever existed, so nothing was restorable
+server-side either). Replaced with `expenses`/`expense_categories` tables,
+same RLS/soft-delete convention as every other table. See
+`docs/backend-architecture.md` §5/§9 and `docs/HANDOVER.md` Session 4 for
+the full writeup.
+
+---
+
+## Messaging Templates Still `localStorage`-Only
+
+Status:
+Flagged, not fixed
+
+Issue:
+`src/lib/messaging/store.ts` persists to browser `localStorage`, not
+Supabase — the same category of risk that caused the Expenses data-loss
+incident above. A `mergeTemplates`/`resolveDefaults` fix was added during
+the Attendance build (Session 4) so existing localStorage state doesn't
+silently miss new built-in templates, but the underlying storage is still
+local, not server-side/cross-device.
+
+---
+
+## Two Duplicate "Dnyanpeeth Classes" Institute Rows
+
+Status:
+Needs decision — not touched
+
+Issue:
+Two `institutes` rows exist with the identical name "Dnyanpeeth Classes"
+(`5577d52e-84da-4272-8f58-c621cf115c63` and
+`ca9b2db1-3a4d-4f38-ba97-f716598bb86b`), found during the Expenses
+migration's institute backfill (both got the correct 24 seeded categories).
+Not the same issue as "Second Test Account With No Institute" above (that's
+a *user* with no institute; this is two separate *institute* rows sharing
+a name). Nothing merged, deleted, or modified — waiting on the account
+owner to confirm whether this is intentional.
+
+---
+
+## `audit_logs.entity = "category"` — Was Dead Code, Now Real
+
+Status:
+Resolved as a side effect of the Expenses system (Session 4, 2026-07-31)
+
+Notes:
+`"category"` existed in the `AuditEntity` type union from early on but was
+never actually written anywhere — confirmed via a live query: before the
+Expenses system shipped, `audit_logs` had exactly 6 rows total, all
+`entity='attendance'`. The Expenses system's category CRUD
+(`addExpenseCategory`/`renameExpenseCategory`/`toggleExpenseCategory`/
+`deleteExpenseCategory` in `src/lib/data/adapter.ts`) now actually calls
+`logAudit({ entity: "category", ... })`, so this path is exercised for the
+first time.
+
+---
+
+## Attendance Migration's `REVOKE ... FROM PUBLIC, anon` Fix Wasn't Committed
+
+Status:
+Resolved (Session 4, 2026-07-31)
+
+Notes:
+The fix that revokes default `PUBLIC`/`anon` `EXECUTE` grants on
+`save_attendance`/`mark_attendance_status` (Postgres grants these by
+default unless explicitly revoked) was applied directly to production
+during the Attendance build, but the corresponding migration file was
+never committed to this repo — meaning a fresh schema rebuild from
+`supabase/migrations/*.sql` (per `SETUP.md`/`BACKUP.md`'s promise) would
+have silently missed it. Found and fixed during this documentation pass:
+`20260730060000_revoke_public_anon_execute_attendance.sql` now exists;
+applying it again against the already-patched live database is a safe
+no-op. The standing rule this established — every new table/RPC gets its
+`REVOKE`/grant check in the *same* migration, verified via
+`information_schema` before considering the migration done — is documented
+explicitly in `docs/backend-architecture.md` §6.
