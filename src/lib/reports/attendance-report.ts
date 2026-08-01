@@ -1,4 +1,11 @@
-import ExcelJS from "exceljs";
+// ExcelJS (930+ kB) was previously a static import, meaning it loaded
+// eagerly as soon as this module's importer (Attendance's Reports tab)
+// loaded, even if Excel export was never clicked — confirmed via real
+// build output (the exceljs chunk was a direct dependency of the route
+// chunk). Now type-only at module scope (zero runtime cost, only used for
+// the Fill/Font type annotations below) with the actual value dynamically
+// imported inside downloadAttendanceReport, only when it's called.
+import type ExcelJS from "exceljs";
 
 import type { AttendanceAbsenceRow } from "@/lib/data/adapter";
 import type { AttendanceSession, Batch, Student } from "@/lib/data/types";
@@ -98,7 +105,8 @@ export async function downloadAttendanceReport(
     throw new Error("No attendance data in this date range yet.");
   }
 
-  const workbook = new ExcelJS.Workbook();
+  const { default: ExcelJSRuntime } = await import("exceljs");
+  const workbook = new ExcelJSRuntime.Workbook();
   workbook.creator = "Vidyafee";
   workbook.created = new Date();
   const sheet = workbook.addWorksheet("Attendance Report");
