@@ -240,6 +240,125 @@ export type Database = {
           },
         ]
       }
+      expense_categories: {
+        Row: {
+          active: boolean
+          created_at: string
+          custom: boolean
+          group_name: string
+          id: string
+          institute_id: string
+          name: string
+          slug: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          custom?: boolean
+          group_name: string
+          id?: string
+          institute_id: string
+          name: string
+          slug?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          custom?: boolean
+          group_name?: string
+          id?: string
+          institute_id?: string
+          name?: string
+          slug?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_categories_institute_id_fkey"
+            columns: ["institute_id"]
+            isOneToOne: false
+            referencedRelation: "institutes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      expenses: {
+        Row: {
+          amount: number
+          attachment_name: string | null
+          category_id: string
+          created_at: string
+          created_by: string | null
+          date: string
+          deleted: boolean
+          deleted_at: string | null
+          deleted_by: string | null
+          description: string | null
+          id: string
+          institute_id: string
+          mode: string
+          sub_category: string | null
+          updated_at: string
+          updated_by: string | null
+          vendor: string | null
+        }
+        Insert: {
+          amount: number
+          attachment_name?: string | null
+          category_id: string
+          created_at?: string
+          created_by?: string | null
+          date: string
+          deleted?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+          description?: string | null
+          id?: string
+          institute_id: string
+          mode?: string
+          sub_category?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vendor?: string | null
+        }
+        Update: {
+          amount?: number
+          attachment_name?: string | null
+          category_id?: string
+          created_at?: string
+          created_by?: string | null
+          date?: string
+          deleted?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+          description?: string | null
+          id?: string
+          institute_id?: string
+          mode?: string
+          sub_category?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vendor?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expenses_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expenses_institute_id_fkey"
+            columns: ["institute_id"]
+            isOneToOne: false
+            referencedRelation: "institutes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       institute_members: {
         Row: {
           access_enabled: boolean
@@ -711,6 +830,24 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      get_expense_breakdown_by_category: {
+        Args: { _from: string; _institute: string; _to: string }
+        Returns: {
+          category_id: string
+          category_name: string
+          group_name: string
+          total_amount: number
+        }[]
+      }
+      get_profitability_summary: {
+        Args: { _from: string; _institute: string; _to: string }
+        Returns: {
+          net_profit: number
+          profit_margin_pct: number
+          total_expenses: number
+          total_revenue: number
+        }[]
       }
       invite_member: {
         Args: {
