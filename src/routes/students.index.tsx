@@ -147,17 +147,22 @@ function StudentsPage() {
                   onClick={() => navigate({ to: "/students/$id", params: { id: s.id } })}
                   className="grid cursor-pointer grid-cols-12 items-center gap-3 px-5 py-3 transition hover:bg-accent/40"
                 >
-                  <div className="col-span-12 md:col-span-4 flex items-center gap-3 min-w-0">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
-                        {initials(s.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{s.name}</p>
-                      <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
-                        {s.rollNo} · <Phone className="h-3 w-3" /> {s.phone}
-                      </p>
+                  <div className="col-span-12 md:col-span-5 flex items-center justify-between gap-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
+                          {initials(s.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{s.name}</p>
+                        <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+                          {s.rollNo} · <Phone className="h-3 w-3" /> {s.phone}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <StudentRowMenu student={s} />
                     </div>
                   </div>
                   <div className="col-span-6 md:col-span-2">
@@ -170,16 +175,11 @@ function StudentsPage() {
                     </div>
                     <Progress value={pct} className="mt-1.5 h-1.5" />
                   </div>
-                  <div className="col-span-6 md:col-span-2 md:text-right">
+                  <div className="col-span-12 md:col-span-3 flex items-center justify-between md:justify-end md:gap-3">
                     <span className={`font-display font-bold ${due > 0 ? "text-destructive" : "text-success"}`}>
                       {due > 0 ? inr(due) : "Cleared"}
                     </span>
-                  </div>
-                  <div className="col-span-6 md:col-span-1 md:text-right">
                     <Badge variant="outline" className="text-[10px]">{s.status}</Badge>
-                  </div>
-                  <div className="col-span-12 md:col-span-1 flex justify-end" onClick={(e) => e.stopPropagation()}>
-                    <StudentRowMenu student={s} />
                   </div>
                 </div>
               );

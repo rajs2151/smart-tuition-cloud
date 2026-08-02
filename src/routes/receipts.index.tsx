@@ -67,25 +67,32 @@ function ReceiptsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <p className="border-b px-5 py-2.5 text-xs text-muted-foreground md:hidden">
-            Tap a receipt to view, print or share it.
-          </p>
-          <div className="hidden md:grid grid-cols-12 gap-3 border-b px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <div className="col-span-2">Receipt no</div>
-            <div className="col-span-4">Student</div>
-            <div className="col-span-2">Date</div>
-            <div className="col-span-2">Mode</div>
-            <div className="col-span-1 text-right">Amount</div>
-            <div className="col-span-1 text-right" />
-          </div>
-          <div className="divide-y">
+        <p className="px-1 text-xs text-muted-foreground md:hidden">
+          Tap a receipt to view, print or share it.
+        </p>
+        <div className="hidden rounded-xl border bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid md:grid-cols-12 md:gap-3">
+          <div className="col-span-2">Receipt no</div>
+          <div className="col-span-4">Student</div>
+          <div className="col-span-2">Date</div>
+          <div className="col-span-2">Mode</div>
+          <div className="col-span-1 text-right">Amount</div>
+          <div className="col-span-1 text-right" />
+        </div>
+
+        {rows.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center text-sm text-muted-foreground">
+              No receipts found.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
             {rows.map((p) => (
               <Link
                 key={p.id}
                 to="/receipts/$id"
                 params={{ id: p.id }}
-                className="grid grid-cols-12 items-center gap-3 px-5 py-3 transition hover:bg-accent/40"
+                className="grid grid-cols-12 items-center gap-3 rounded-xl border bg-card px-5 py-3 shadow transition hover:bg-accent/40"
               >
                 <div className="col-span-6 md:col-span-2 font-mono text-sm">{p.receiptNo}</div>
                 <div className="col-span-12 md:col-span-4 truncate">
@@ -101,11 +108,8 @@ function ReceiptsPage() {
                 </div>
               </Link>
             ))}
-            {rows.length === 0 && (
-              <div className="p-12 text-center text-sm text-muted-foreground">No receipts found.</div>
-            )}
           </div>
-        </Card>
+        )}
       </main>
     </>
   );

@@ -35,10 +35,7 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   return (
     <>
-      <AppHeader
-        title="Institute Settings"
-        subtitle="Branding, receipts, academic structure and backend — all editable, no code changes."
-      />
+      <AppHeader title="Institute Settings" />
       <main className="flex-1 space-y-4 p-4 md:p-6">
         <Tabs defaultValue="institute" className="space-y-4">
           {/* 8 tabs don't fit one row on mobile width. No other tab bar in

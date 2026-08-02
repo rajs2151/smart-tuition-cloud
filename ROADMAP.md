@@ -64,6 +64,15 @@ a new task list. Update in place as items complete or priorities shift.
   actual codebase. Remaining gap: the pending-amount figures fed into
   these messages still read the same stale `student.paidFee` column
   fixed elsewhere this session — see `KNOWN_ISSUES.md`.
+  - **Provider extensibility note** (moved here from a "Future ready"
+    info box on the Fee Recovery page — removed from that user-facing
+    screen since it directly named an internal file path and
+    implementation detail no end user should see; context preserved
+    here instead of just deleted): sending today is `wa.me` click-to-chat
+    only. The module is structured so that swapping in WhatsApp Business
+    API, Twilio, or Meta Cloud API later means changing the send function
+    inside `src/lib/messaging/whatsapp.ts` — the rest of the app (template
+    editing, message composition, send-trigger UI) doesn't need to change.
 - [ ] Attendance tracking (per batch/student)
 - [ ] SMS (likely overlapping use case with WhatsApp — decide if both are
   needed or one supersedes the other)
