@@ -195,6 +195,28 @@
   box-shadow: var(--shadow-soft);
 }
 
+@utility label-caps {
+  /* The "TOTAL BILLED" / section-label pattern, consolidated from 3
+     ad-hoc variants found across expenses.tsx, fees.tsx, index.tsx,
+     recovery.tsx, receipts.tsx, and students.$id.tsx (text-xs vs the
+     arbitrary text-[11px], font-medium vs font-semibold, and one
+     instance hardcoding text-slate-500 instead of this token) into one
+     shared class. text-xs (a real Tailwind scale step, 0.75rem) chosen
+     over the arbitrary text-[11px] value some instances used. Values
+     hardcoded rather than referencing var(--text-xs) etc., since this
+     project's own @theme inline block never defines those (unlike
+     --color-*/--radius-*, which card-elevated/gradient-brand above
+     correctly reference) -- they're just Tailwind's built-in defaults,
+     not a project-declared token here. Does not cover the smaller inline
+     tag/badge uses (e.g. a "Custom" category chip) -- different, smaller
+     UI role, not this section-label one. */
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  color: var(--color-muted-foreground);
+}
+
 @utility gradient-brand {
   background-image: linear-gradient(135deg, oklch(0.52 0.22 275), oklch(0.62 0.18 295));
 }

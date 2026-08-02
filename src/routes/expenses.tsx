@@ -107,9 +107,9 @@ function ExpensesPage() {
       <main className="flex-1 space-y-6 p-4 md:p-6">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Stat label="Today" value={inr(totals.today)} icon={<Wallet className="h-4 w-4" />} tone="primary" />
-          <Stat label="This Month" value={inr(totals.month)} icon={<TrendingUp className="h-4 w-4" />} tone="info" />
-          <Stat label="This Year" value={inr(totals.year)} icon={<Receipt className="h-4 w-4" />} tone="warning" />
-          <Stat label="All Time" value={inr(totals.total)} icon={<IndianRupee className="h-4 w-4" />} tone="success" />
+          <Stat label="This Month" value={inr(totals.month)} icon={<TrendingUp className="h-4 w-4" />} tone="primary" />
+          <Stat label="This Year" value={inr(totals.year)} icon={<Receipt className="h-4 w-4" />} tone="primary" />
+          <Stat label="All Time" value={inr(totals.total)} icon={<IndianRupee className="h-4 w-4" />} tone="primary" />
         </div>
 
         <Tabs value={tab} onValueChange={setTab}>
@@ -132,18 +132,19 @@ function ExpensesPage() {
   );
 }
 
-function Stat({ label, value, icon, tone }: { label: string; value: string; icon: React.ReactNode; tone: "primary" | "info" | "warning" | "success" }) {
+function Stat({ label, value, icon, tone }: { label: string; value: string; icon: React.ReactNode; tone: "primary" | "info" | "warning" | "success" | "destructive" }) {
   const tones: Record<string, string> = {
     primary: "bg-primary/10 text-primary",
     info: "bg-info/10 text-info",
     warning: "bg-warning/15 text-warning-foreground",
     success: "bg-success/10 text-success",
+    destructive: "bg-destructive/10 text-destructive",
   };
   return (
     <Card>
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="label-caps">{label}</p>
           <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone]}`}>{icon}</span>
         </div>
         <p className="mt-3 font-display text-2xl font-bold">{value}</p>
@@ -289,11 +290,11 @@ function ListTab({ expenses, categories }: { expenses: Expense[]; categories: Ex
             {/* Card layout below md — the table below doesn't reflow, so
                 give narrow screens a stacked-card view instead of a
                 horizontally-scrolled 6-column table. */}
-            <div className="space-y-2 md:hidden">
+            <div className="divide-y md:hidden">
               {filtered.map((e) => {
                 const cat = categories.find((c) => c.id === e.categoryId);
                 return (
-                  <div key={e.id} className="rounded-lg border p-3">
+                  <div key={e.id} className="py-3 first:pt-0 last:pb-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium">{cat?.name ?? "—"}</p>
@@ -319,7 +320,7 @@ function ListTab({ expenses, categories }: { expenses: Expense[]; categories: Ex
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr className="label-caps border-b text-left">
                     <th className="p-2">Date</th><th className="p-2">Category</th><th className="p-2">Vendor</th>
                     <th className="p-2">Mode</th><th className="p-2 text-right">Amount</th><th className="p-2 text-right">Actions</th>
                   </tr>
@@ -520,19 +521,24 @@ function ProfitTab() {
   return (
     <div className="grid gap-6">
       <div className="grid gap-4 md:grid-cols-3">
-        <Stat label="Total Revenue" value={inr(allTime.totalRevenue)} icon={<IndianRupee className="h-4 w-4" />} tone="success" />
-        <Stat label="Total Expenses" value={inr(allTime.totalExpenses)} icon={<Wallet className="h-4 w-4" />} tone="warning" />
+        <Stat label="Total Revenue" value={inr(allTime.totalRevenue)} icon={<IndianRupee className="h-4 w-4" />} tone="primary" />
+        <Stat label="Total Expenses" value={inr(allTime.totalExpenses)} icon={<Wallet className="h-4 w-4" />} tone="primary" />
         <Stat
           label={allTime.netProfit >= 0 ? "Net Profit" : "Net Loss"}
           value={inr(Math.abs(allTime.netProfit))}
           icon={<TrendingUp className="h-4 w-4" />}
-          tone={allTime.netProfit >= 0 ? "primary" : "warning"}
+          tone={allTime.netProfit >= 0 ? "success" : "destructive"}
         />
       </div>
       <div className="grid gap-4 md:grid-cols-3">
-        <Stat label="This Month Revenue" value={inr(thisMonth.totalRevenue)} icon={<IndianRupee className="h-4 w-4" />} tone="success" />
-        <Stat label="This Month Expenses" value={inr(thisMonth.totalExpenses)} icon={<Wallet className="h-4 w-4" />} tone="warning" />
-        <Stat label="This Month Profit" value={inr(thisMonth.netProfit)} icon={<TrendingUp className="h-4 w-4" />} tone="info" />
+        <Stat label="This Month Revenue" value={inr(thisMonth.totalRevenue)} icon={<IndianRupee className="h-4 w-4" />} tone="primary" />
+        <Stat label="This Month Expenses" value={inr(thisMonth.totalExpenses)} icon={<Wallet className="h-4 w-4" />} tone="primary" />
+        <Stat
+          label={thisMonth.netProfit >= 0 ? "This Month Profit" : "This Month Loss"}
+          value={inr(Math.abs(thisMonth.netProfit))}
+          icon={<TrendingUp className="h-4 w-4" />}
+          tone={thisMonth.netProfit >= 0 ? "success" : "destructive"}
+        />
       </div>
       <Card>
         <CardHeader>
@@ -625,10 +631,10 @@ function CategoriesTab({ categories }: { categories: ExpenseCategory[] }) {
         <CardContent className="space-y-5">
           {grouped.map(([g, list]) => (
             <div key={g}>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g}</p>
-              <div className="space-y-1.5">
+              <p className="label-caps mb-2">{g}</p>
+              <div className="divide-y">
                 {list.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between rounded-md border p-2">
+                  <div key={c.id} className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
                     <div>
                       <p className="text-sm font-medium">{c.name}</p>
                       {c.custom && <span className="text-[10px] uppercase tracking-wide text-primary">Custom</span>}
@@ -760,12 +766,12 @@ function ReportsTab({ expenses, categories }: { expenses: Expense[]; categories:
         </div>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2 md:hidden">
+        <div className="divide-y md:hidden">
           {filtered.length === 0 ? (
             <p className="p-8 text-center text-sm text-muted-foreground">No records for selected filters</p>
           ) : (
             filtered.map((e) => (
-              <div key={e.id} className="rounded-lg border p-3">
+              <div key={e.id} className="py-3 first:pt-0 last:pb-0">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-medium">{categories.find((c) => c.id === e.categoryId)?.name ?? "—"}</p>
@@ -781,7 +787,7 @@ function ReportsTab({ expenses, categories }: { expenses: Expense[]; categories:
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr className="label-caps border-b text-left">
                 <th className="p-2">Date</th><th className="p-2">Category</th><th className="p-2">Vendor</th><th className="p-2">Mode</th><th className="p-2 text-right">Amount</th>
               </tr>
             </thead>

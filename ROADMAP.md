@@ -53,6 +53,13 @@ a new task list. Update in place as items complete or priorities shift.
 - [ ] Decide whether the Dashboard's Follow-up threshold should persist
   per-institute instead of resetting every session — see
   `KNOWN_ISSUES.md`
+- [ ] Introduce a spacing design-token system (`--spacing-*` CSS
+  variables, matching the existing `--color-*`/`--radius-*` tokens in
+  `styles.css`). Found during a design-consistency pass — colors/radius
+  are a deliberate token system already, spacing is ad-hoc per component.
+  Deferred since retrofitting every existing `gap-3`/`p-4` against a new
+  scale is a bigger structural change than that pass was scoped for —
+  see `KNOWN_ISSUES.md`
 
 ## Phase 2 — Communication & operations
 
