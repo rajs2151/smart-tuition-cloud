@@ -222,7 +222,7 @@ function MiniStat({ label, value, tone }: { label: string; value: string; tone?:
   return (
     <Card>
       <CardContent className="p-4">
-        <p className="label-caps">{label}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
         <p className={`mt-2 font-display text-xl font-bold ${cls}`}>{value}</p>
       </CardContent>
     </Card>

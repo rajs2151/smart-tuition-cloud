@@ -145,7 +145,7 @@ function ReceiptDetail() {
               </div>
             </div>
             <div className="text-right">
-              <p className="label-caps">Fee Receipt</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Fee Receipt</p>
               <p className="font-mono text-lg font-bold">{payment.receiptNo}</p>
               <p className="text-xs text-muted-foreground">{fmtDate(payment.date)}</p>
             </div>
@@ -154,14 +154,14 @@ function ReceiptDetail() {
           {/* Student */}
           <div className="grid grid-cols-2 gap-6 py-6 text-sm">
             <div>
-              <p className="label-caps">Received from</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Received from</p>
               <p className="mt-1 font-display text-base font-bold">{student.name}</p>
               <p className="text-muted-foreground">Roll No: {student.rollNo}</p>
               <p className="text-muted-foreground">{student.phone}</p>
               {student.parentName && <p className="text-muted-foreground">Parent: {student.parentName}</p>}
             </div>
             <div className="text-right">
-              <p className="label-caps">Academic</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Academic</p>
               <p className="mt-1 font-medium">{batch?.name ?? student.course}</p>
               {student.standard && (
                 <p className="text-xs text-muted-foreground">
@@ -182,7 +182,7 @@ function ReceiptDetail() {
           <div className="py-6">
             <table className="w-full text-sm">
               <thead>
-                <tr className="label-caps text-left">
+                <tr className="text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   <th className="pb-2">Description</th>
                   <th className="pb-2 text-right">Amount</th>
                 </tr>
