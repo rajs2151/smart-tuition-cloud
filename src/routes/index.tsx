@@ -241,21 +241,21 @@ function Dashboard() {
             }
           />
           <Link to="/fees" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success"><IndianRupee className="h-5 w-5" /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><IndianRupee className="h-5 w-5" /></span>
             <span>
               <p className="font-display font-bold">Collect Fee</p>
               <p className="text-xs text-muted-foreground">Record payment</p>
             </span>
           </Link>
           <Link to="/receipts" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info"><ReceiptIcon className="h-5 w-5" /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><ReceiptIcon className="h-5 w-5" /></span>
             <span>
               <p className="font-display font-bold">Receipts</p>
               <p className="text-xs text-muted-foreground">Print &amp; share</p>
             </span>
           </Link>
           <Link to="/batches" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15 text-warning-foreground"><FileBarChart className="h-5 w-5" /></span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><FileBarChart className="h-5 w-5" /></span>
             <span>
               <p className="font-display font-bold">Batches</p>
               <p className="text-xs text-muted-foreground">Manage batches</p>
@@ -686,7 +686,7 @@ function Kpi({
     >
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="label-caps">{label}</p>
           <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone]}`}>{icon}</span>
         </div>
         <p className="mt-3 font-display text-2xl font-bold leading-none">{value}</p>
