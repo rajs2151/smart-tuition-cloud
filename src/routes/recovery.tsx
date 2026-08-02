@@ -300,17 +300,6 @@ function RecoveryPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-info/30 bg-info/5">
-              <CardContent className="space-y-1 p-4">
-                <p className="text-xs font-semibold uppercase text-info">Future ready</p>
-                <p className="text-xs text-muted-foreground">
-                  Today reminders open WhatsApp via wa.me click-to-chat. The same module
-                  is plug-ready for WhatsApp Business API, Twilio or Meta Cloud API —
-                  swap the send function in <code>src/lib/messaging/whatsapp.ts</code>.
-                </p>
-              </CardContent>
-            </Card>
-
             <p className="text-[11px] text-muted-foreground">
               Messages are generated from templates editable in <strong>Settings → Message Templates</strong>.
               Sent on behalf of <strong>{institute.name}</strong>.
@@ -445,7 +434,12 @@ function CustomMessageDialog({ row }: { row: Row }) {
               </SelectContent>
             </Select>
           </div>
-          <Textarea rows={10} value={msg} onChange={(e) => setMsg(e.target.value)} className="font-mono text-xs" />
+          <Textarea
+            rows={10}
+            value={msg}
+            onChange={(e) => setMsg(e.target.value)}
+            className="font-mono text-base md:text-sm"
+          />
           <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
             Will be sent to <strong>{row.parentPhone ?? row.phone}</strong> via WhatsApp.
             On payment, this reminder will be tagged as successful.
