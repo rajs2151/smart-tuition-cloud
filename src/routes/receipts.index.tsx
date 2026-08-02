@@ -71,7 +71,7 @@ function ReceiptsPage() {
           <p className="border-b px-5 py-2.5 text-xs text-muted-foreground md:hidden">
             Tap a receipt to view, print or share it.
           </p>
-          <div className="label-caps hidden md:grid grid-cols-12 gap-3 border-b px-5 py-3">
+          <div className="hidden md:grid grid-cols-12 gap-3 border-b px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             <div className="col-span-2">Receipt no</div>
             <div className="col-span-4">Student</div>
             <div className="col-span-2">Date</div>

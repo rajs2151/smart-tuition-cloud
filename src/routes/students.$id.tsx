@@ -327,7 +327,7 @@ function Row({ icon, label, value }: { icon: React.ReactNode; label: string; val
     <div className="flex items-start gap-3">
       <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">{icon}</span>
       <div className="min-w-0 flex-1">
-        <p className="label-caps">{label}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
         <p className="truncate text-sm font-medium">{value}</p>
       </div>
     </div>
@@ -339,7 +339,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "su
     tone === "success" ? "text-success" : tone === "danger" ? "text-destructive" : tone === "info" ? "text-info" : "text-foreground";
   return (
     <div className="rounded-lg border bg-card p-3">
-      <p className="label-caps">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className={`mt-1 font-display text-lg font-bold ${cls}`}>{value}</p>
     </div>
   );

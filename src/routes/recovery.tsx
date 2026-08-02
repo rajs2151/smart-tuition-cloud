@@ -631,7 +631,7 @@ function Stat({
           <Icon className="h-5 w-5" />
         </div>
         <div>
-          <p className="label-caps">{label}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
           <p className="mt-1 font-display text-xl font-bold">{value}</p>
           {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
         </div>
