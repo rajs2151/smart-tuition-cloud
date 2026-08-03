@@ -34,11 +34,14 @@ a new task list. Update in place as items complete or priorities shift.
 - [x] Batch Total Course Fee changes now propagate to every enrolled
   student — done (2026-07-18, Session 3); previously a student's fee was
   only copied from the batch at creation and never updated afterward
-- [ ] Apply Session 3's four pending migrations to the live database —
-  see `KNOWN_ISSUES.md` ("Pending Migrations Not Yet Applied to
-  Production"); this already caused one real production error
-- [ ] Reports — yearly expense report (aggregate/rollup view, not just
-  per-record listing)
+- [x] Apply Session 3's four pending migrations to the live database —
+  done; confirmed all 15 migrations currently on `main` are applied live
+  (Session 4 features work end-to-end against real data). See
+  `KNOWN_ISSUES.md` for one remaining gap (a `REVOKE` hardening fix
+  applied live but not yet committed as a migration file).
+- [x] Reports — yearly expense report — done (Session 4, PR #9), shipped
+  as part of the Expenses & profitability system (`ReportsTab`,
+  This-Year/All-Time rollups)
 - [ ] Push the CI migration-validation workflow (blocked on a
   properly-scoped GitHub token — see `KNOWN_ISSUES.md`)
 - [ ] Enable leaked-password protection in Supabase Auth settings
@@ -53,6 +56,18 @@ a new task list. Update in place as items complete or priorities shift.
 - [ ] Decide whether the Dashboard's Follow-up threshold should persist
   per-institute instead of resetting every session — see
   `KNOWN_ISSUES.md`
+- [ ] Add Expense mobile zoom bug — root cause unconfirmed, active
+  investigation (PR #17); see `KNOWN_ISSUES.md`
+- [ ] Wire `get_expense_breakdown_by_category` into a UI component, or
+  remove it — currently defined and reachable but nothing calls it; see
+  `KNOWN_ISSUES.md`
+- [ ] Categories tab Switch — tap-target (currently 20×36px, below this
+  app's 44px convention) and accessible-label gaps; see `KNOWN_ISSUES.md`
+- [ ] Confirm/resolve the reported duplicate "Dnyanpeeth Classes"
+  institute rows — needs direct database access to verify; see
+  `KNOWN_ISSUES.md`
+- [ ] Spacing-token system — deliberately deferred out of the Session 4
+  design-consistency pass (PR #14); see `KNOWN_ISSUES.md`
 
 ## Phase 2 — Communication & operations
 
@@ -73,7 +88,15 @@ a new task list. Update in place as items complete or priorities shift.
     API, Twilio, or Meta Cloud API later means changing the send function
     inside `src/lib/messaging/whatsapp.ts` — the rest of the app (template
     editing, message composition, send-trigger UI) doesn't need to change.
-- [ ] Attendance tracking (per batch/student)
+- [x] Attendance tracking (per batch/student) — done (Session 4, PRs
+  #6–#8): present-by-default marking, holiday/cancelled states,
+  institute-level lock window, bilingual WhatsApp absence notices,
+  Reports drill-down (batch → day → notify list) plus a standalone
+  today-only Notify tab
+- [x] Expenses & profitability — done (Session 4, PR #9): server-
+  persisted expenses/categories, Net Profit computed server-side,
+  Excel/CSV export (moved here from being untracked in this roadmap
+  entirely — it shipped without ever being listed as planned work)
 - [ ] SMS (likely overlapping use case with WhatsApp — decide if both are
   needed or one supersedes the other)
 

@@ -5,6 +5,169 @@ first). Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 2026-08-03 (Session 4, docs update)
+
+### Added
+- `docs/HANDOVER.md`, `KNOWN_ISSUES.md`, `ROADMAP.md`, this file — brought
+  current for the first time since 2026-07-18, after two earlier attempts
+  (PR #10, and one before it) failed to land. See the process note in
+  `docs/HANDOVER.md`'s Handover Notes for why, and the recommendation to
+  bundle doc updates into the same PR as the feature they describe going
+  forward.
+
+### Fixed
+- `ROADMAP.md`/`KNOWN_ISSUES.md` now actually contain the spacing-token
+  deferral that PR #14's description claimed had already been documented
+  there — it hadn't.
+
+## 2026-08-03 (PR #18)
+
+### Changed
+- **Receipt card: payment-mode badge repositioned** from the date row to
+  sit inline with the receipt number (top row, right-aligned) — receipt
+  number identifies the transaction, payment mode describes it, a more
+  natural pairing than badge+date. Same "identity + status grouped
+  together at the top" principle as the student-card menu fix (PR #16).
+  Date/amount/chevron consolidated onto one row to fill the space the
+  badge vacated.
+
+## 2026-08-02 (PR #16) — UI fixes batch 1
+
+### Fixed
+- **Add Expense mobile zoom bug, partially investigated.** The reported
+  dialog (`ExpenseDialog`) checked out clean — every input already used
+  the safe `text-base`/`md:text-sm` pattern. Found and fixed a real,
+  separate violation instead: `recovery.tsx`'s reminder-customization
+  `Textarea` had `text-xs` unconditionally overriding the safe default.
+  Root cause of the originally-reported symptom remained open — see
+  `KNOWN_ISSUES.md`.
+
+### Changed
+- Removed a redundant Settings page subtitle.
+- **Removed a "FUTURE READY" info box from Fee Recovery** that directly
+  named an internal file path (`src/lib/messaging/whatsapp.ts`) and
+  WhatsApp-provider-swap implementation details in user-facing UI —
+  context preserved in `ROADMAP.md`'s WhatsApp entry rather than lost.
+- **Receipts list restyled** — flat `divide-y` rows in one wrapping Card
+  replaced with individually-carded receipts, matching the Batches list's
+  existing per-item Card pattern (the Students list has the identical
+  flat problem and wasn't a valid reference).
+- **Student card**: three-dot menu moved from a bare standalone row at
+  the bottom to the top row next to name/avatar, bumped from a
+  non-standard `h-8 w-8` to this app's actual established `h-11 w-11`
+  row-action convention (already used in `batches.tsx`/`expenses.tsx`).
+  Active status badge moved down to where the menu used to sit, next to
+  the due amount.
+
+## 2026-08-02 (PRs #12, #13) — settings + header
+
+### Fixed
+- Settings tab bar mobile scroll and toggle-row spacing/tap-target fixes.
+- Removed a dead bell icon from the header; fixed the account-dropdown
+  interaction on the avatar.
+
+## 2026-08-02 (PR #14, merged same day, then reverted via PR #15)
+
+### Changed, then reverted
+- **Design-consistency pass** — semantic-color rule (reserving
+  success/warning/info/destructive for actual data states), a
+  consolidated `label-caps` typography utility replacing 3 inconsistent
+  uppercase-label variants, and borders-within-borders cleanup in
+  `expenses.tsx`. **Merged, then reverted ~10 minutes later** the same
+  day — both the merge and the revert are real commits on `main`,
+  documented as both, not just the end state. Revert confirmed clean:
+  every file the reverted PR touched (that this session's other work
+  didn't also touch) diffed byte-identical against the pre-merge commit.
+- One item from this PR's description survived independently of the
+  revert: the spacing-token system was deliberately not introduced,
+  intended to be tracked as deferred in `KNOWN_ISSUES.md`/`ROADMAP.md` —
+  it wasn't actually there until this session's docs update (2026-08-03)
+  added it for real.
+
+## 2026-08-01 (PR #11) — mobile/perf audit batch 1
+
+### Fixed
+- Sidebar and tap-target fixes, dialog font-size fixes, confirmed
+  `staleTime`/route-`preload` tuning, `exceljs` split out of the shared
+  bundle into its own lazy chunk (verified later in Session 4 with real
+  before/after byte counts: total client JS grew only 1.06% despite two
+  entire new feature systems landing afterward — no bundle-bloat
+  regression found).
+
+## 2026-08-01 (PR #9) — Expenses & profitability system
+
+### Added
+- **Server-persisted Expenses** (`expense_categories`, `expenses` tables
+  — previously in-memory only), custom category additions, a
+  Profitability tab backed by `getProfitabilitySummary` (computes Net
+  Profit server-side from real revenue minus real expenses), Excel/CSV
+  export, and `get_expense_breakdown_by_category` (defined, reachable,
+  but no UI component currently calls it — see `KNOWN_ISSUES.md`). New
+  migration `20260731000000_expenses_system.sql`.
+
+## 2026-07-31 (PR #8) — Attendance system, v2
+
+### Fixed
+- **Stale-`localStorage` template bug**: any account active before the
+  attendance message category existed had a persisted `templates` array
+  that silently never picked up the new built-in absence templates —
+  production report was "No attendance message template found." Root
+  cause traced precisely: the send flow filters `state.templates` by
+  category directly, never reads the stale `defaults` map, so that
+  wasn't the actual failure path. Fixed with an additive
+  `mergeTemplates()` that appends any built-in missing from the
+  persisted array by id, leaving user edits to existing templates
+  completely untouched — verified by tracing the id-based filter logic,
+  not just asserted.
+- **Deleted students' historical attendance was silently vanishing from
+  Reports**, not just the live marking grid. The shared students query
+  for the whole Attendance route excluded soft-deleted students at the
+  source — correct for the live grid, but it meant Reports/Notify views
+  couldn't resolve a deleted student's `student_id` back to a name for
+  their historical absence rows, so those rows got silently filtered
+  out. Fixed by fetching the unfiltered list once and keeping the
+  live grid's own separate client-side filter as the only thing excluding
+  deleted students there.
+
+### Removed
+- Two Reports summary cards ("Overall attendance", "Lowest attendance,
+  last 30 days") — confirmed still present post-redesign, then removed
+  per instruction; per-batch cards and Excel/PDF export kept.
+
+### Added
+- Standalone "Notify" tab — a flat, all-batches, today-only table of
+  absent students with individual Send actions, distinct from the
+  per-day drill-down's read-only historical view.
+
+## 2026-07-30 (PR #7) — Attendance system, mobile fixes + Reports redesign
+
+### Fixed
+- Sticky save bar and the batch/date/holiday-cancel controls row didn't
+  wrap on phone-width viewports.
+
+### Changed
+- Replaced a flat date-range attendance report with a batch-first
+  drill-down (batch cards → day list, newest-first, only days with an
+  actual recorded session → per-day absentee list).
+- Added persistent, server-tracked (`attendance_absences.notified_at`)
+  WhatsApp sent/pending state, surviving a refresh; sent students sink to
+  the bottom of the list rather than disappearing. New migration
+  `20260730181401_attendance_notified_at.sql`.
+
+## 2026-07-30 (PR #6) — Attendance system, v1
+
+### Added
+- New feature: per-batch/per-student attendance. Two-table design
+  (`attendance_sessions` + `attendance_absences`, absence-only storage —
+  a present student generates zero writes), `save_attendance`/
+  `mark_attendance_status` RPCs, present-by-default marking grid,
+  holiday/cancelled-lecture states, an institute-level lock-window
+  setting restricting teacher/staff edits after a configurable cutoff
+  (owner/admin exempt), bilingual (English/Marathi) WhatsApp absence
+  templates. New migration `20260730052621_attendance_system.sql`.
+
+---
+
 ## 2026-07-18 (Session 3, part 2)
 
 ### Fixed
