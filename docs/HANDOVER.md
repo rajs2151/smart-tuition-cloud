@@ -1,5 +1,6 @@
 # Project Handover
 
+_Last updated: July 31, 2026 (Session 4 — Attendance & Expenses systems)_
 _Last updated: August 3, 2026_
 
 ---
@@ -39,9 +40,25 @@ Everything else (`batches`, `students`, `payments`, `receipts`,
 - Institute-level subscription status gating (`trial`/`active`/`expired`/`blocked`)
 - Dashboard (redesigned in Session 3 — see below), batches, students (list +
   detail), bulk student import (spreadsheet, now creates real historical
-  payment records, not just a fee-summary snapshot), fees, expenses,
+  payment records, not just a fee-summary snapshot), fees,
   receipts (list + detail + printable receipt view), fee recovery
   tracking, recycle bin (soft-delete recovery), settings
+- **Expenses — fully server-persisted (Session 4).** Previously listed
+  here as simply "done," but was actually entirely client-side
+  `localStorage` until Session 4, which was the confirmed root cause of
+  a real user-reported data-loss incident. Now backed by `expenses`/
+  `expense_categories` tables (RLS, soft-delete, per-institute category
+  seeding), plus two profitability RPCs
+  (`get_profitability_summary`/`get_expense_breakdown_by_category`). See
+  **Session 4** below and `docs/backend-architecture.md` §5/§9.
+- **Attendance tracking (Session 4).** Per-batch daily roll-call
+  (present-by-default grid), holiday/cancelled session marking, a
+  Reports drill-down (batch → day → absentee list), a top-level Notify
+  tab (flat cross-batch today-only absentee list with live WhatsApp
+  send), and persistent server-side "sent" tracking
+  (`attendance_absences.notified_at`) that survives a refresh or a
+  different device. Two RPCs (`save_attendance`/`mark_attendance_status`)
+  with `is_member()` and cross-batch-id guards. See **Session 4** below.
 - Full RLS-protected multi-tenancy across all data tables
 - Historical payment import (Paid Fee / Payment Date / Payment Mode /
   Description columns), reusing the same `recordPayment()` path as manual
@@ -150,6 +167,8 @@ previous Lovable-managed project.
 `attendance_sessions`, `attendance_absences`, `expense_categories`,
 `expenses`, plus Supabase's built-in `auth.users`. Full table-by-table
 breakdown (columns, PKs, FKs, purpose) is in `docs/backend-architecture.md`
+§5. 15 migrations committed, all applied to the live database as of this
+update:
 §5. 15 migrations committed, in order:
 
 ```
@@ -161,6 +180,14 @@ breakdown (columns, PKs, FKs, purpose) is in `docs/backend-architecture.md`
 20260709055109_fix_authenticated_execute_grants        fixes the grant bug from migration 2
 20260711130000_batch_total_course_fee                  batches.monthly_fee -> total_course_fee (renamed, backfilled *12)
 20260711140000_payment_void_and_audit_diffs            payments.voided/voided_at/voided_by, audit_logs.old_value/new_value, students.date_of_birth
+20260713080000_add_receipt_contact_overrides           receipt phone/email/website overrides
+20260714120000_team_members_schema                     institute_members role expansion (admin/teacher/accountant), status
+20260714120001_team_members_rpcs_and_rls               invite_member/change_member_role/remove_member, is_owner_or_admin
+20260718090000_sync_batch_course_fee                   sync_batch_course_fee RPC + trigger
+20260730052621_attendance_system                       attendance_sessions, attendance_absences, save_attendance, mark_attendance_status, institutes.attendance_language/attendance_lock_time
+20260730060000_revoke_public_anon_execute_attendance    REVOKE EXECUTE FROM PUBLIC, anon on the two attendance RPCs (applied live earlier; committed as a file only in Session 4 — see Known Issues #22)
+20260730181401_attendance_notified_at                   attendance_absences.notified_at (WhatsApp "sent" tracking)
+20260731000000_expenses_system                          expenses, expense_categories, seeding trigger, get_profitability_summary, get_expense_breakdown_by_category
 20260713080000_add_receipt_contact_overrides           receipt-specific phone/email/website overrides
 20260714120000_team_members_schema                     admin/teacher/accountant roles added to member_role enum
 20260714120001_team_members_rpcs_and_rls               invite_member/change_member_role/remove_member RPCs + RLS
@@ -199,13 +226,27 @@ missing from migration 2 through migration 5 (see **Known Issues** /
 **Important Decisions**), fixed in migration 6.
 
 ### RPCs
-- `is_member(_institute, _user)`, `is_owner(_institute, _user)` — internal
-  RLS helpers, `SECURITY DEFINER`.
+- `is_member(_institute, _user)`, `is_owner(_institute, _user)`,
+  `is_owner_or_admin(_institute, _user)` — internal RLS helpers,
+  `SECURITY DEFINER`.
 - `next_receipt_number(_institute)` — atomically increments/returns the next
   formatted receipt number. `authenticated`-only (tightened from an
   over-permissive `PUBLIC`/`anon` grant in migration 6).
 - `create_institute_with_owner(_name, _phone, _address, _email)` — atomic,
   idempotent institute + owner-membership creation. `authenticated`-only.
+- `invite_member`/`change_member_role`/`remove_member` — Team Members
+  management RPCs (Session 3), owner-only (see Known Issues #15).
+- `sync_batch_course_fee(_batch_id, _new_fee)` — propagates a batch's Total
+  Course Fee change to every enrolled student's `total_fee` (Session 3).
+- `save_attendance(_batch_id, _session_date, _absent_student_ids)` /
+  `mark_attendance_status(_batch_id, _session_date, _status)` — Session 4.
+  Both `is_member`-guarded; `save_attendance` additionally rejects any
+  student id that doesn't belong to `_batch_id`. `authenticated`-only,
+  `PUBLIC`/`anon` explicitly revoked (see Known Issues #22).
+- `get_profitability_summary(_institute, _from, _to)` /
+  `get_expense_breakdown_by_category(_institute, _from, _to)` — Session 4.
+  `is_member`-guarded, `authenticated`-only. Full detail in
+  `docs/backend-architecture.md` §6.
 
 ### Storage
 Not used. No Supabase Storage buckets exist or are referenced in code. The
@@ -531,6 +572,79 @@ patch the cache.
 
 ---
 
+## Session 4 (July 30–31, 2026) — Attendance + Expenses systems, 5 PRs merged (#6–#9, plus a docs update)
+
+**Attendance system** (`20260730052621_attendance_system.sql`,
+`20260730060000_revoke_public_anon_execute_attendance.sql`,
+`20260730181401_attendance_notified_at.sql`):
+- `attendance_sessions`/`attendance_absences` tables, `save_attendance`/
+  `mark_attendance_status` RPCs. Both RPCs' `is_member()` guard and
+  `save_attendance`'s cross-batch-id guard were tested live against
+  production with real non-member/cross-batch calls (inside rolled-back
+  transactions or against synthetic, immediately-deleted fixtures — never
+  against real institute data), not just read from the SQL.
+- First-pass grant check found `PUBLIC`/`anon` still had `EXECUTE` on both
+  RPCs despite the SQL looking correct — caught via a direct
+  `information_schema.routine_privileges` query, fixed by a follow-on
+  migration. That follow-on migration itself wasn't committed as a file
+  in this repo until this Session 4 docs pass (see Known Issues #22) —
+  worth remembering as a case where "I fixed it live" and "it's actually
+  in version control" turned out to be two different things.
+- Mobile fixes (sticky save bar, controls bar, grid breakpoints), a
+  Reports drill-down (`batches-overview.tsx` → `batch-day-list.tsx` →
+  `day-notify-list.tsx`, replacing a flat date-range list), and a
+  persistent WhatsApp "Notify" flow — `attendance_absences.notified_at`
+  tracks send state server-side (not React state) so it survives a
+  refresh or a different device; sent rows grey out and sink to the
+  bottom rather than disappearing. A later pass added a top-level
+  cross-batch "Notify" tab and restricted `day-notify-list.tsx`'s live
+  send button to today's session only (past days show a read-only
+  badge), a `mergeTemplates`/`resolveDefaults` fix so existing
+  localStorage template state doesn't miss new built-ins, removal of two
+  Reports summary cards, and a fix so deleted students' historical
+  attendance stays visible in Reports/Notify while still correctly
+  excluded from the live attendance-taking grid.
+
+**Expenses system** (`20260731000000_expenses_system.sql`):
+- Root cause of a real user-reported data-loss incident, investigated
+  before any fix was proposed: `src/lib/expenses/store.ts` was entirely
+  `localStorage`-only — confirmed by direct code trace (zero Supabase
+  calls in the file) and a live `audit_logs` query (zero
+  `entity='expense'` rows ever existed, so nothing was restorable
+  server-side either).
+- Replaced with `expenses`/`expense_categories` tables — same
+  `is_member()` RLS and soft-delete convention as every other table,
+  per-institute category seeding via a creation-time trigger (mirroring
+  `add_creator_as_owner`) plus a one-time backfill for both existing
+  institutes (24 categories each, confirmed via live query — an earlier
+  verbal "should be 23" turned out to be an off-by-one hand-count, not a
+  seeding bug). `category_id` uses `ON DELETE RESTRICT`, which required
+  fixing a real latent bug: the old category-delete button was a
+  synchronous, un-awaited, un-caught handler that would have shown a
+  false-positive "Category deleted" success toast even if the new FK
+  constraint rejected the delete.
+- Two new `SECURITY DEFINER` RPCs, `get_profitability_summary` and
+  `get_expense_breakdown_by_category`, replacing client-side
+  revenue/expense math in `ProfitTab`. Verified live: one synthetic
+  expense inserted and rolled back inside a transaction, RPC output
+  matched an independent manual `SUM(payments)-SUM(expenses)` calculation
+  exactly on all four returned figures, against real production payment
+  data.
+- This migration included `REVOKE ... FROM PUBLIC, anon` from the start
+  (unlike the attendance migration's first pass, which needed a
+  follow-on fix) — the standing rule this incident established is now
+  documented explicitly in `docs/backend-architecture.md` §6.
+
+**Also found and flagged, not fixed, during this session** (full detail
+in Known Issues below): `audit_logs.entity = "category"` was dead code
+until the Expenses system's category CRUD started actually writing it;
+messaging templates remain localStorage-only; two `institutes` rows
+share the identical name "Dnyanpeeth Classes," unresolved pending the
+account owner's confirmation of intent.
+
+---
+
+# Known Issues
 ## Session 4 (July 30 – August 3, 2026) — 12 merged PRs (#6, #7, #8, #9, #11, #12, #13, #14, #15, #16, #18, plus this docs PR), 2 still open (#10, #17)
 
 Working session covering two full new feature systems (Attendance,
@@ -762,6 +876,49 @@ wrapping adapter function having no caller anywhere in the UI.
     repeatedly rather than a fresh one each time) — flagged in-session
     multiple times. Treat it as fully exposed; rotate it before doing
     anything else with this repo if it hasn't been rotated already.
+18. **Two `institutes` rows exist with the identical name "Dnyanpeeth
+    Classes"** (`5577d52e-84da-4272-8f58-c621cf115c63` and
+    `ca9b2db1-3a4d-4f38-ba97-f716598bb86b`) — found during the Expenses
+    migration work (both got the same 24 default expense categories
+    seeded, correctly, by the backfill). Not the same thing as item 3
+    above (that's about a *user* with no institute; this is two separate
+    *institute* rows with the same display name). Not touched or acted
+    on — needs the account owner to confirm whether this is intentional
+    before anyone merges, deletes, or modifies either row.
+19. **Messaging templates (`src/lib/messaging/store.ts`) are still
+    localStorage-only**, not Supabase-backed. A `mergeTemplates`/
+    `resolveDefaults` fix was added during the Attendance build so
+    existing localStorage state picks up new built-in templates (e.g. the
+    attendance category) without losing user edits, but the underlying
+    storage is still local, not server-side/cross-device. Same class of
+    risk that caused item 21 below — not yet fixed.
+20. **`audit_logs.entity = "category"`** was defined in the `AuditEntity`
+    type union from early on but was genuinely never written anywhere —
+    confirmed via a live query returning zero `entity='category'` rows
+    (in fact, before the Expenses system shipped, `audit_logs` had exactly
+    6 rows total, all `entity='attendance'`). As of the Expenses system,
+    this path is now real: `addExpenseCategory`/`renameExpenseCategory`/
+    `toggleExpenseCategory`/`deleteExpenseCategory` in
+    `src/lib/data/adapter.ts` do call `logAudit({ entity: "category", ... })`.
+21. **Expenses were entirely client-side `localStorage`
+    (`src/lib/expenses/store.ts`/`defaults.ts`) until the Expenses system
+    shipped** — confirmed as the real root cause of a user-reported
+    data-loss incident (previously-entered expense data appeared to
+    vanish). Confirmed via direct code trace (zero Supabase calls
+    anywhere in the old store — only `logAudit()` calls, none of which
+    ever passed a full record snapshot) and a live `audit_logs` query
+    (zero `entity='expense'` rows ever existed, so nothing was
+    restorable server-side either). Both files are now deleted; expenses
+    are fully server-persisted (`expenses`/`expense_categories` tables,
+    same RLS/soft-delete convention as every other financial table). See
+    `docs/backend-architecture.md` §9 for the full technical writeup.
+22. **The `REVOKE ... FROM PUBLIC, anon` fix for `save_attendance`/
+    `mark_attendance_status`** was applied directly to production during
+    the Attendance build but wasn't committed as a migration file until
+    this documentation pass —
+    `20260730060000_revoke_public_anon_execute_attendance.sql` now closes
+    that gap. Applying it again against the already-patched live database
+    is a safe no-op.
 
 ---
 
