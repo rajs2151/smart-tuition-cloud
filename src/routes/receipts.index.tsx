@@ -94,17 +94,21 @@ function ReceiptsPage() {
                 params={{ id: p.id }}
                 className="grid grid-cols-12 items-center gap-3 rounded-xl border bg-card px-5 py-3 shadow transition hover:bg-accent/40"
               >
-                <div className="col-span-6 md:col-span-2 font-mono text-sm">{p.receiptNo}</div>
+                <div className="col-span-12 md:col-span-3 flex items-center justify-between md:justify-start md:gap-2">
+                  <span className="font-mono text-sm">{p.receiptNo}</span>
+                  <Badge variant="secondary">{p.mode}</Badge>
+                </div>
                 <div className="col-span-12 md:col-span-4 truncate">
                   <p className="font-medium">{p.student?.name ?? "—"}</p>
                   <p className="text-xs text-muted-foreground">{p.student?.rollNo}</p>
                 </div>
-                <div className="col-span-6 md:col-span-2 text-sm">{fmtDate(p.date)}</div>
-                <div className="col-span-6 md:col-span-2"><Badge variant="secondary">{p.mode}</Badge></div>
-                <div className="col-span-6 md:col-span-1 font-display font-bold text-success md:text-right">{inr(p.amount)}</div>
-                <div className="col-span-2 flex items-center justify-end md:col-span-1 md:block md:text-right">
-                  <ChevronRight className="h-4 w-4 text-muted-foreground md:hidden" />
-                  <ReceiptIcon className="ml-auto hidden h-4 w-4 text-muted-foreground md:block" />
+                <div className="col-span-12 md:col-span-5 flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{fmtDate(p.date)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-display font-bold text-success">{inr(p.amount)}</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground md:hidden" />
+                    <ReceiptIcon className="hidden h-4 w-4 text-muted-foreground md:block" />
+                  </div>
                 </div>
               </Link>
             ))}
