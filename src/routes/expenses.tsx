@@ -285,36 +285,68 @@ function ListTab({ expenses, categories }: { expenses: Expense[]; categories: Ex
         {filtered.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">No expenses found. Click <strong>Add Expense</strong> to record one.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="p-2">Date</th><th className="p-2">Category</th><th className="p-2">Vendor</th>
-                  <th className="p-2">Mode</th><th className="p-2 text-right">Amount</th><th className="p-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((e) => {
-                  const cat = categories.find((c) => c.id === e.categoryId);
-                  return (
-                    <tr key={e.id} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="p-2">{fmtDate(e.date)}</td>
-                      <td className="p-2"><div className="font-medium">{cat?.name ?? "—"}</div>{e.subCategory && <div className="text-xs text-muted-foreground">{e.subCategory}</div>}</td>
-                      <td className="p-2 text-muted-foreground">{e.vendor ?? "—"}</td>
-                      <td className="p-2"><Badge variant="outline">{e.mode}</Badge></td>
-                      <td className="p-2 text-right font-display font-bold">{inr(e.amount)}</td>
-                      <td className="p-2 text-right">
-                        <div className="flex justify-end gap-1">
-                          <ExpenseDialog editing={e} categories={categories} trigger={<Button size="icon" variant="ghost" className="h-8 w-8"><Pencil className="h-3.5 w-3.5" /></Button>} />
-                          <DeleteExpenseButton id={e.id} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Card layout below md — the table below doesn't reflow, so
+                give narrow screens a stacked-card view instead of a
+                horizontally-scrolled 6-column table. */}
+            <div className="space-y-2 md:hidden">
+              {filtered.map((e) => {
+                const cat = categories.find((c) => c.id === e.categoryId);
+                return (
+                  <div key={e.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium">{cat?.name ?? "—"}</p>
+                        {e.subCategory && <p className="text-xs text-muted-foreground">{e.subCategory}</p>}
+                        <p className="text-xs text-muted-foreground">{fmtDate(e.date)}</p>
+                      </div>
+                      <p className="shrink-0 font-display font-bold">{inr(e.amount)}</p>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{e.mode}</Badge>
+                        {e.vendor && <span className="text-xs text-muted-foreground">{e.vendor}</span>}
+                      </div>
+                      <div className="flex gap-1">
+                        <ExpenseDialog editing={e} categories={categories} trigger={<Button size="icon" variant="ghost" className="h-11 w-11" aria-label="Edit expense" title="Edit expense"><Pencil className="h-3.5 w-3.5" /></Button>} />
+                        <DeleteExpenseButton id={e.id} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="p-2">Date</th><th className="p-2">Category</th><th className="p-2">Vendor</th>
+                    <th className="p-2">Mode</th><th className="p-2 text-right">Amount</th><th className="p-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((e) => {
+                    const cat = categories.find((c) => c.id === e.categoryId);
+                    return (
+                      <tr key={e.id} className="border-b last:border-0 hover:bg-accent/40">
+                        <td className="p-2">{fmtDate(e.date)}</td>
+                        <td className="p-2"><div className="font-medium">{cat?.name ?? "—"}</div>{e.subCategory && <div className="text-xs text-muted-foreground">{e.subCategory}</div>}</td>
+                        <td className="p-2 text-muted-foreground">{e.vendor ?? "—"}</td>
+                        <td className="p-2"><Badge variant="outline">{e.mode}</Badge></td>
+                        <td className="p-2 text-right font-display font-bold">{inr(e.amount)}</td>
+                        <td className="p-2 text-right">
+                          <div className="flex justify-end gap-1">
+                            <ExpenseDialog editing={e} categories={categories} trigger={<Button size="icon" variant="ghost" className="h-11 w-11" aria-label="Edit expense" title="Edit expense"><Pencil className="h-3.5 w-3.5" /></Button>} />
+                            <DeleteExpenseButton id={e.id} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -335,7 +367,7 @@ function DeleteExpenseButton({ id }: { id: string }) {
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+        <Button size="icon" variant="ghost" className="h-11 w-11 text-destructive" aria-label="Delete expense" title="Delete expense"><Trash2 className="h-3.5 w-3.5" /></Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -605,7 +637,7 @@ function CategoriesTab({ categories }: { categories: ExpenseCategory[] }) {
                       <Switch checked={c.active} onCheckedChange={(v) => handleToggle(c.id, v)} />
                       <RenameCategoryButton id={c.id} current={c.name} />
                       {c.custom && (
-                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" onClick={() => handleDeleteCategory(c.id)}>
+                        <Button size="icon" variant="ghost" className="h-11 w-11 text-destructive" aria-label="Delete category" title="Delete category" onClick={() => handleDeleteCategory(c.id)}>
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       )}
@@ -655,7 +687,7 @@ function RenameCategoryButton({ id, current }: { id: string; current: string }) 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (o) setVal(current); }}>
       <DialogTrigger asChild>
-        <Button size="icon" variant="ghost" className="h-8 w-8"><Pencil className="h-3.5 w-3.5" /></Button>
+        <Button size="icon" variant="ghost" className="h-11 w-11" aria-label="Rename category" title="Rename category"><Pencil className="h-3.5 w-3.5" /></Button>
       </DialogTrigger>
       <DialogContent className="max-w-sm">
         <DialogHeader><DialogTitle>Rename category</DialogTitle></DialogHeader>
@@ -728,7 +760,25 @@ function ReportsTab({ expenses, categories }: { expenses: Expense[]; categories:
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        <div className="space-y-2 md:hidden">
+          {filtered.length === 0 ? (
+            <p className="p-8 text-center text-sm text-muted-foreground">No records for selected filters</p>
+          ) : (
+            filtered.map((e) => (
+              <div key={e.id} className="rounded-lg border p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium">{categories.find((c) => c.id === e.categoryId)?.name ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground">{fmtDate(e.date)} · {e.mode}</p>
+                  </div>
+                  <p className="shrink-0 font-display font-bold">{inr(e.amount)}</p>
+                </div>
+                {e.vendor && <p className="mt-1 text-xs text-muted-foreground">{e.vendor}</p>}
+              </div>
+            ))
+          )}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">

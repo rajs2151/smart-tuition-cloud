@@ -56,7 +56,7 @@ export function StudentRowMenu({ student }: { student: Student }) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Student actions">
+          <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Student actions">
             <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>

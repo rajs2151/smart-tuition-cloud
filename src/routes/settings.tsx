@@ -35,21 +35,25 @@ export const Route = createFileRoute("/settings")({
 function SettingsPage() {
   return (
     <>
-      <AppHeader
-        title="Institute Settings"
-        subtitle="Branding, receipts, academic structure and backend — all editable, no code changes."
-      />
+      <AppHeader title="Institute Settings" />
       <main className="flex-1 space-y-4 p-4 md:p-6">
         <Tabs defaultValue="institute" className="space-y-4">
-          <TabsList className="flex flex-wrap">
-            <TabsTrigger value="institute">Institute</TabsTrigger>
-            <TabsTrigger value="receipt">Receipt</TabsTrigger>
-            <TabsTrigger value="templates">Message Templates</TabsTrigger>
-            <TabsTrigger value="attendance">Attendance</TabsTrigger>
-            <TabsTrigger value="academic">Academic</TabsTrigger>
-            <TabsTrigger value="backend">Backend</TabsTrigger>
-            <TabsTrigger value="team">Team</TabsTrigger>
-            <TabsTrigger value="subscription">Subscription</TabsTrigger>
+          {/* 8 tabs don't fit one row on mobile width. No other tab bar in
+              this app has an existing scroll pattern to match (checked:
+              batches.tsx uses a fixed 2-col grid for its 2 tabs;
+              recovery.tsx's TabsList has no special width handling for its
+              own tab count) — chose horizontal scroll over a dropdown/select
+              since it's the smaller change and keeps this reading as one
+              tab bar, not a different control type on mobile vs desktop. */}
+          <TabsList className="flex w-full flex-nowrap justify-start overflow-x-auto">
+            <TabsTrigger value="institute" className="shrink-0">Institute</TabsTrigger>
+            <TabsTrigger value="receipt" className="shrink-0">Receipt</TabsTrigger>
+            <TabsTrigger value="templates" className="shrink-0">Message Templates</TabsTrigger>
+            <TabsTrigger value="attendance" className="shrink-0">Attendance</TabsTrigger>
+            <TabsTrigger value="academic" className="shrink-0">Academic</TabsTrigger>
+            <TabsTrigger value="backend" className="shrink-0">Backend</TabsTrigger>
+            <TabsTrigger value="team" className="shrink-0">Team</TabsTrigger>
+            <TabsTrigger value="subscription" className="shrink-0">Subscription</TabsTrigger>
           </TabsList>
 
           <TabsContent value="institute"><InstituteTab /></TabsContent>
@@ -346,9 +350,20 @@ function ContactOverrideField({
 }) {
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <Label className="text-sm">{label}</Label>
-        <Switch checked={useInstitute} onCheckedChange={onUseInstituteChange} />
+        {/* Switch itself is 20x36px (h-5 w-9) — well under the 44px tap-
+            target standard used elsewhere in this build, but that's the
+            shared Switch component used app-wide (Categories tab, Show
+            GST/Logo/Footer, etc.) — resizing the control itself is a
+            bigger, separate call. The correct fix for a small control
+            like a switch/toggle (matches iOS/Material conventions) is a
+            padded tap *area* around it, not stretching the visual switch
+            to 44px, which would look oversized and inconsistent with
+            every other switch in the app. */}
+        <span className="-m-3 shrink-0 p-3">
+          <Switch checked={useInstitute} onCheckedChange={onUseInstituteChange} />
+        </span>
       </div>
       <div className="space-y-1.5">{children}</div>
       <p className="text-[11px] text-muted-foreground">On receipts: {preview}</p>

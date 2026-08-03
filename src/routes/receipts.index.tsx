@@ -67,45 +67,53 @@ function ReceiptsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <p className="border-b px-5 py-2.5 text-xs text-muted-foreground md:hidden">
-            Tap a receipt to view, print or share it.
-          </p>
-          <div className="hidden md:grid grid-cols-12 gap-3 border-b px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <div className="col-span-2">Receipt no</div>
-            <div className="col-span-4">Student</div>
-            <div className="col-span-2">Date</div>
-            <div className="col-span-2">Mode</div>
-            <div className="col-span-1 text-right">Amount</div>
-            <div className="col-span-1 text-right" />
-          </div>
-          <div className="divide-y">
+        <p className="px-1 text-xs text-muted-foreground md:hidden">
+          Tap a receipt to view, print or share it.
+        </p>
+        <div className="hidden rounded-xl border bg-card px-5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground md:grid md:grid-cols-12 md:gap-3">
+          <div className="col-span-2">Receipt no</div>
+          <div className="col-span-4">Student</div>
+          <div className="col-span-2">Date</div>
+          <div className="col-span-2">Mode</div>
+          <div className="col-span-1 text-right">Amount</div>
+          <div className="col-span-1 text-right" />
+        </div>
+
+        {rows.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center text-sm text-muted-foreground">
+              No receipts found.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
             {rows.map((p) => (
               <Link
                 key={p.id}
                 to="/receipts/$id"
                 params={{ id: p.id }}
-                className="grid grid-cols-12 items-center gap-3 px-5 py-3 transition hover:bg-accent/40"
+                className="grid grid-cols-12 items-center gap-3 rounded-xl border bg-card px-5 py-3 shadow transition hover:bg-accent/40"
               >
-                <div className="col-span-6 md:col-span-2 font-mono text-sm">{p.receiptNo}</div>
+                <div className="col-span-12 md:col-span-3 flex items-center justify-between md:justify-start md:gap-2">
+                  <span className="font-mono text-sm">{p.receiptNo}</span>
+                  <Badge variant="secondary">{p.mode}</Badge>
+                </div>
                 <div className="col-span-12 md:col-span-4 truncate">
                   <p className="font-medium">{p.student?.name ?? "—"}</p>
                   <p className="text-xs text-muted-foreground">{p.student?.rollNo}</p>
                 </div>
-                <div className="col-span-6 md:col-span-2 text-sm">{fmtDate(p.date)}</div>
-                <div className="col-span-6 md:col-span-2"><Badge variant="secondary">{p.mode}</Badge></div>
-                <div className="col-span-6 md:col-span-1 font-display font-bold text-success md:text-right">{inr(p.amount)}</div>
-                <div className="col-span-2 flex items-center justify-end md:col-span-1 md:block md:text-right">
-                  <ChevronRight className="h-4 w-4 text-muted-foreground md:hidden" />
-                  <ReceiptIcon className="ml-auto hidden h-4 w-4 text-muted-foreground md:block" />
+                <div className="col-span-12 md:col-span-5 flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">{fmtDate(p.date)}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-display font-bold text-success">{inr(p.amount)}</span>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground md:hidden" />
+                    <ReceiptIcon className="hidden h-4 w-4 text-muted-foreground md:block" />
+                  </div>
                 </div>
               </Link>
             ))}
-            {rows.length === 0 && (
-              <div className="p-12 text-center text-sm text-muted-foreground">No receipts found.</div>
-            )}
           </div>
-        </Card>
+        )}
       </main>
     </>
   );

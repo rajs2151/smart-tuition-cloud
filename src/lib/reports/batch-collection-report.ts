@@ -1,4 +1,6 @@
-import ExcelJS from "exceljs";
+// See attendance-report.ts for why this is type-only + dynamically
+// imported at call time rather than a static import.
+import type ExcelJS from "exceljs";
 
 import type { Batch } from "@/lib/data/types";
 import type { BatchReportPayment } from "@/lib/data/adapter";
@@ -45,7 +47,8 @@ export async function downloadBatchCollectionReport(
 
   const totalAmount = rows.reduce((sum, p) => sum + p.amount, 0);
 
-  const workbook = new ExcelJS.Workbook();
+  const { default: ExcelJSRuntime } = await import("exceljs");
+  const workbook = new ExcelJSRuntime.Workbook();
   workbook.creator = "Vidyafee";
   workbook.created = new Date();
   const sheet = workbook.addWorksheet("Collection Report");

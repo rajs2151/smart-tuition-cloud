@@ -59,6 +59,136 @@ calling this fully closed end-to-end.
 
 ---
 
+## Add Expense Mobile Zoom Bug
+
+Status:
+Open — root cause unconfirmed, active investigation (PR #17)
+
+Issue:
+Reported: opening "Add Expense" on mobile leaves the page zoomed
+out/misaligned, persisting after closing the dialog and across
+subsequent tab switches until manually reset.
+
+Investigated and ruled out:
+- Every `<Input>`/`<Textarea>`/`<Select>` in `ExpenseDialog` itself uses
+  the app's safe default (`text-base` at the base/mobile breakpoint,
+  `md:text-sm` only for desktop) — no per-instance override found.
+- A real, separate sub-16px violation *was* found and fixed this
+  session, but in a different file: `recovery.tsx`'s reminder-
+  customization `Textarea` had `text-xs` (12px) unconditionally
+  overriding the safe default via tailwind-merge. Fixed. Confirmed via
+  before/after lint diff that this didn't affect anything else.
+
+Currently being tested (in order, each a distinct, separately-checkable
+mechanism — not the same theory restated):
+1. **The `type="file"` attachment input** (PR #17, result pending as of
+   this writing) — tests two different possible explanations at once,
+   worth untangling if the zoom turns out to disappear:
+   (a) an unconfirmed WebKit-specific theory: iOS Safari's native
+   file-picker sheet interacting badly with the dialog's
+   `position: fixed` + Radix's internal scroll-lock, leaving the
+   viewport miscalculated after the sheet closes — nothing to do with
+   font-size at all; or
+   (b) a **newly-found, more mundane, directly comparable-to-recovery.tsx
+   possibility**: the shared `Input` component applies `file:text-sm`
+   (14px) to the "Choose file" button label specifically —
+   unconditionally, no `md:` override, unlike the input's own overall
+   `text-base md:text-sm`. This was missed in the original investigation,
+   which only checked overall input text size, not the `file:*` variant.
+   If removing the file input makes the zoom disappear, a follow-up test
+   (restore the field, but override just `file:text-base`) is needed to
+   tell (a) and (b) apart — PR #17's test alone can't distinguish them.
+2. **`SelectTrigger`'s hardcoded `text-sm`** (14px, no `md:` override,
+   confirmed present at `src/components/ui/select.tsx` — `ExpenseDialog`
+   uses it twice, Category and Payment mode) — the current lead per
+   testing plan as of this writing. Worth noting for calibration: a
+   `SelectTrigger` is a button/combobox, not a native text-typing
+   surface, so it's a structurally different candidate than an `<Input>`/
+   `<Textarea>` — mobile browsers' auto-zoom-on-focus is specifically
+   documented as a text-input-focus behavior. Flagging this as a reason
+   it's a slightly lower-confidence lead than a native input would be,
+   not a reason to skip testing it.
+
+No live iOS Safari device has been available to any session working on
+this — every step above was investigated via code reading, not
+reproduced firsthand. Don't close this out as resolved based on a
+type-checks-clean/builds-clean verification alone; it needs an actual
+device confirmation.
+
+---
+
+## `get_expense_breakdown_by_category` — Reachable, But Nothing Calls It
+
+Status:
+Confirmed dead code, one level removed from the RPC itself
+
+Issue:
+The RPC (`supabase/migrations/20260731000000_expenses_system.sql`) *is*
+wired into a real adapter function,
+`getExpenseBreakdownByCategory()` (`src/lib/data/adapter.ts`) — so it's
+not dead at the SQL/RPC level. But grepping every `.tsx` file for a call
+to that adapter function turns up nothing — no route or component
+anywhere in the app actually calls it. The RPC exists, is grantable, is
+correctly typed, and never fires from the UI. Either wire it into the
+Expenses Reports/Categories tab (a natural fit — the plumbing already
+returns exactly a category breakdown), or remove it if it's not
+actually planned to be used.
+
+---
+
+## Categories Tab: Switch Tap-Target and Label Gaps
+
+Status:
+Confirmed
+
+Issue:
+The category active/inactive `<Switch>` in Expenses → Categories
+(`src/routes/expenses.tsx`) is `h-5 w-9` (20×36px) via the shared
+`Switch` component (`src/components/ui/switch.tsx`) — well under the
+44px minimum tap-target convention already established elsewhere in this
+app (`h-11 w-11`, used in `batches.tsx`/`expenses.tsx`'s own delete
+button right next to this same Switch). It also has no `aria-label` or
+associated `<label>`/`htmlFor` — the category name text sits visually
+next to it but isn't programmatically linked, so a screen reader
+announces only "switch, on/off" with no indication of which category.
+The adjacent Delete button in the same row does have `aria-label`/
+`title` — this Switch is the outlier in its own row, not just relative to
+the rest of the app.
+
+---
+
+## Two "Dnyanpeeth Classes" Institute Rows (Reported, Unverified)
+
+Status:
+Reported, not independently confirmed — no database access available to
+this session to check directly
+
+Issue:
+Flagged as a possible duplicate-institute-row issue for the demo/test
+institute ("Dnyanpeeth Classes"). Every session working on this repo
+recently has had git/API access only, no direct Supabase query access —
+this needs confirming against the live `institutes` table by someone
+with database access before treating it as confirmed. Not dismissing it,
+just precise about what's actually been verified versus reported.
+
+---
+
+## Deferred: Spacing-Token System
+
+Status:
+Intentionally deferred, not a bug
+
+Issue:
+The design-consistency audit (PR #14, merged then reverted same day —
+see `docs/HANDOVER.md` Session 4) found spacing inconsistencies across
+the app but was explicitly instructed not to introduce a spacing-token
+system as part of that pass. PR #14's own description said this had been
+"documented as a deferred future item in both `KNOWN_ISSUES.md` and
+`ROADMAP.md`" — checked, and it hadn't actually landed in either file
+until now. Tracking it here for real this time; see `ROADMAP.md`.
+
+---
+
 ## CI Migration-Validation Workflow
 
 Status:
@@ -120,9 +250,14 @@ without confirming intent first.
 
 ## Reports
 
-Need a yearly expense report (aggregate view of expenses over a full year,
-not currently available — `src/routes/expenses.tsx` currently shows
-per-record entries without a yearly rollup/summary view).
+Status:
+Resolved (Session 4, PR #9)
+
+Notes:
+Shipped as part of the Expenses & profitability system — `expenses.tsx`
+now has a `ReportsTab` and a "This Year"/"All Time" rollup (`totals.year`,
+`totals.total`), not just a per-record listing. Confirmed against
+current code, not assumed from the PR title.
 
 ---
 
@@ -145,28 +280,24 @@ pass, not a quick fix.
 ## Pending Migrations Not Yet Applied to Production
 
 Status:
-Needs action — confirmed to have caused a real production error
+Resolved
 
-Issue:
-Four migrations added in Session 3 are committed to `main` but have not
-been run against the live Supabase project:
-`20260713080000_add_receipt_contact_overrides.sql`,
-`20260714120000_team_members_schema.sql`,
-`20260714120001_team_members_rpcs_and_rls.sql`,
-`20260718090000_sync_batch_course_fee.sql`. This is not a hypothetical
-risk — `institute_members.status` (added by the Team Members schema
-migration) not existing yet on the live project caused a real
-"Couldn't load your account" error in production mid-session, since
-`session.ts` treats that query failure as a genuine, recoverable error
-state. Apply via `supabase db push` or the SQL editor, in the order
-listed, before relying on any Session 3 feature end to end.
+Notes:
+All 15 migrations currently on `main` (up through
+`20260731000000_expenses_system.sql`) are confirmed applied to the live
+Supabase project — the Session 4 features (Attendance, Expenses) are
+working end-to-end against real data, which wouldn't be possible
+otherwise. See `docs/HANDOVER.md`'s Database architecture section for one
+remaining gap: a `REVOKE EXECUTE` hardening fix that's confirmed already
+applied live but not yet committed as a migration file (sitting in the
+still-open PR #10).
 
 ---
 
 ## `student.paidFee` Still Read Directly In Three Places
 
 Status:
-Flagged, not fixed
+Flagged, not fixed — re-confirmed still accurate as of Session 4
 
 Issue:
 Session 3 found and fixed a recurring bug where several screens read
@@ -177,9 +308,12 @@ and the individual receipt page. Grepping the codebase after those
 fixes turned up three more places with the same pattern, not yet
 touched: the WhatsApp acknowledgement subtype/pending-amount logic
 (`src/components/payment-row-menu.tsx`, `src/lib/messaging/whatsapp.ts`)
-and the recovery/reminders page (`src/routes/recovery.tsx`). Same
-staleness risk; fixing these means loading each student's payment list
-on pages that don't currently fetch it.
+and the recovery/reminders page (`src/routes/recovery.tsx`). Re-checked
+directly against current code during this Session 4 docs pass — all
+three still read `student.paidFee` unchanged; nothing in the Session 4
+feature work happened to touch this. Same staleness risk; fixing these
+means loading each student's payment list on pages that don't currently
+fetch it.
 
 ---
 

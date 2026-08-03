@@ -1,6 +1,7 @@
 # Project Handover
 
 _Last updated: July 31, 2026 (Session 4 — Attendance & Expenses systems)_
+_Last updated: August 3, 2026_
 
 ---
 
@@ -19,9 +20,13 @@ Security, not application code. Full architecture reference:
 `docs/backend-architecture.md`.
 
 **Core entities:** an `institute` is the tenant. Each user is linked to an
-institute via `institute_members` with a `role` (`owner`/`staff`) and a
-per-member `access_enabled` flag. Everything else (`batches`, `students`,
-`payments`, `receipts`, `audit_logs`) is scoped to one institute.
+institute via `institute_members` with a `role`
+(`owner`/`staff`/`admin`/`teacher`/`accountant` — `staff` kept for backward
+compatibility with pre-Team-Members rows, `admin`/`teacher`/`accountant`
+added by the Team Members feature) and a per-member `access_enabled` flag.
+Everything else (`batches`, `students`, `payments`, `receipts`,
+`audit_logs`, `attendance_sessions`, `attendance_absences`,
+`expense_categories`, `expenses`) is scoped to one institute.
 
 ---
 
@@ -87,6 +92,30 @@ per-member `access_enabled` flag. Everything else (`batches`, `students`,
   delete), **Edit Payment** (amount/date/mode/notes only), **Void Payment**
   (stays visible in history, excluded from totals) — all owner-only, with
   audit-logged old/new value snapshots
+- **Attendance system** (Session 4, PRs #6–#8) — per-batch/per-student
+  attendance marking, absence-only storage (`attendance_sessions` +
+  `attendance_absences`), holiday/cancelled-lecture states, a lock-window
+  setting restricting teacher/staff edits after a configurable cutoff
+  (owner/admin always exempt), bilingual WhatsApp absence notices, and a
+  Reports drill-down (batch → day → per-student notify list, sent/pending
+  state persisted server-side). See Session 4 below for the two-round
+  history (a v1 build, then a v2 correcting a stale-localStorage template
+  bug and adding the standalone Notify tab).
+- **Expenses & profitability system** (Session 4, PR #9) — server-persisted
+  expenses (was previously in-memory only), categories with custom
+  additions, a Profitability tab computing Net Profit server-side
+  (`getProfitabilitySummary` RPC) from real revenue minus real expenses,
+  Excel/CSV export, and a category-breakdown RPC
+  (`get_expense_breakdown_by_category` — defined and reachable, but not
+  currently wired to any UI component, see `KNOWN_ISSUES.md`).
+- **Mobile/UX audit rounds** (Session 4, PRs #11, #12, #16, #18) — sidebar
+  and tap-target fixes, dialog font-size/zoom-trigger fixes, `staleTime`
+  and route-preload tuning, `exceljs` code-splitting (kept it out of the
+  shared bundle), settings tab-bar scroll fix, header cleanup, receipts
+  list restyled from flat divided rows to individually-carded receipts
+  (matching the Batches list's existing card pattern), student card
+  three-dot-menu repositioning, and payment-mode badge repositioning on
+  receipt cards.
 
 ### Features under development
 - None actively in progress as of this handover. The most recent work (see
@@ -140,6 +169,7 @@ previous Lovable-managed project.
 breakdown (columns, PKs, FKs, purpose) is in `docs/backend-architecture.md`
 §5. 15 migrations committed, all applied to the live database as of this
 update:
+§5. 15 migrations committed, in order:
 
 ```
 20260703064918_179279b9-...  initial schema
@@ -158,7 +188,26 @@ update:
 20260730060000_revoke_public_anon_execute_attendance    REVOKE EXECUTE FROM PUBLIC, anon on the two attendance RPCs (applied live earlier; committed as a file only in Session 4 — see Known Issues #22)
 20260730181401_attendance_notified_at                   attendance_absences.notified_at (WhatsApp "sent" tracking)
 20260731000000_expenses_system                          expenses, expense_categories, seeding trigger, get_profitability_summary, get_expense_breakdown_by_category
+20260713080000_add_receipt_contact_overrides           receipt-specific phone/email/website overrides
+20260714120000_team_members_schema                     admin/teacher/accountant roles added to member_role enum
+20260714120001_team_members_rpcs_and_rls               invite_member/change_member_role/remove_member RPCs + RLS
+20260718090000_sync_batch_course_fee                   propagates a batch fee change to every enrolled student
+20260730052621_attendance_system                       attendance_sessions/attendance_absences, save_attendance/mark_attendance_status RPCs
+20260730181401_attendance_notified_at                  attendance_absences.notified_at, for the Notify tab's sent/pending tracking
+20260731000000_expenses_system                         expense_categories/expenses, getProfitabilitySummary/get_expense_breakdown_by_category RPCs
 ```
+
+All 15 have been applied to the live Supabase project — the "Session 3
+migrations not yet applied" issue in earlier versions of this document is
+resolved (see `KNOWN_ISSUES.md`); everything built in Session 4 has been
+working end-to-end against the live database, which wouldn't be possible
+otherwise. **Not yet committed as a migration file**, despite being
+already applied live: a `REVOKE EXECUTE ... FROM PUBLIC, anon` hardening
+fix for `save_attendance`/`mark_attendance_status`, sitting in the still-
+open, never-merged PR #10. Re-applying it is a safe no-op per its own
+comment (revoking an already-absent grant does nothing) — worth pulling
+out of PR #10 and landing on its own regardless of what happens to the
+rest of that PR.
 
 ### Authentication
 Supabase Auth, email + password only (`supabase.auth.signUp` /
@@ -596,6 +645,134 @@ account owner's confirmation of intent.
 ---
 
 # Known Issues
+## Session 4 (July 30 – August 3, 2026) — 12 merged PRs (#6, #7, #8, #9, #11, #12, #13, #14, #15, #16, #18, plus this docs PR), 2 still open (#10, #17)
+
+Working session covering two full new feature systems (Attendance,
+Expenses), two rounds of mobile/UX auditing, a design-consistency pass
+that was merged then reverted, and — the reason this document exists in
+its current form — a docs-update effort that failed to land twice before
+this attempt. In roughly chronological order:
+
+1. **PR #6 — Attendance system, v1.** New two-table design
+   (`attendance_sessions` + `attendance_absences`, absence-only storage —
+   a present student generates zero writes), `save_attendance`/
+   `mark_attendance_status` RPCs, present-by-default marking grid,
+   holiday/cancelled-lecture states, bilingual (English/Marathi) WhatsApp
+   absence templates, and a lock-window setting restricting edits after a
+   configurable cutoff (owner/admin always exempt, enforced client-side).
+2. **PR #7 — mobile fixes, Reports redesign, Notify list.** The v1 sticky
+   save bar and controls row didn't wrap on phone-width viewports — fixed.
+   Replaced a flat date-range report with a batch-first drill-down (batch
+   cards → day list, newest-first, only days with an actual session → a
+   per-day absentee list). Added a persistent, server-tracked
+   (`notified_at`) WhatsApp notify list with sent/pending state that
+   survives a refresh, sunk-to-bottom sorting for already-sent students.
+3. **PR #8 — real bug found and fixed, not just described.** The
+   messaging template store is `localStorage`-backed; any account active
+   before the attendance category existed had a stale, non-empty
+   persisted `templates` array that silently never picked up the new
+   built-in absence templates — production report: "No attendance message
+   template found." Root-caused precisely (the send-flow code filters
+   `state.templates` by category directly, never reads the `defaults`
+   map, so a merely-stale `defaults.attendance` pointer wasn't the actual
+   failure path). Fixed with an additive `mergeTemplates()` that appends
+   any built-in template missing from the persisted array by id, leaving
+   edited/custom templates completely untouched — verified this
+   specifically preserves user edits even when a built-in's default
+   content later changes, by tracing the id-based filter logic, not just
+   asserting it. Also: removed the two "Overall attendance"/"Lowest
+   attendance" Reports cards (confirmed still present post-redesign, then
+   removed per instruction), and fixed a real PRD-violating bug found
+   while verifying deleted-student handling — the shared students query
+   for the whole Attendance route excluded soft-deleted students, which
+   meant a deleted student's *historical* absence rows silently vanished
+   from Reports too, not just the live marking grid. Fixed by fetching
+   the unfiltered list once and letting the live grid's own existing
+   client-side filter continue to exclude them there only.
+4. **PR #9 — Expenses & profitability system.** Migrated Expenses from
+   in-memory-only to fully server-persisted (`expense_categories`,
+   `expenses`), added a Profitability tab backed by a
+   `getProfitabilitySummary` RPC (computes Net Profit server-side from
+   real revenue minus real expenses) and `get_expense_breakdown_by_category`
+   (defined and reachable, but no UI component currently calls its
+   wrapping adapter function — see `KNOWN_ISSUES.md`).
+5. **PRs #11–#12 — mobile/perf audit, round 1.** Sidebar and tap-target
+   fixes, dialog font-size fixes, confirmed `staleTime`/route-`preload`
+   tuning still intact, `exceljs` kept out of the shared bundle via its
+   own lazy chunk (verified with real byte counts later in this session,
+   not just re-asserted — see item 9 below), Settings tab-bar mobile
+   scroll fix.
+6. **PR #13 — header cleanup.** Removed a dead bell icon, fixed the
+   account-dropdown-on-avatar interaction.
+7. **PR #14, merged, then PR #15, reverted #14 ~10 minutes later.**
+   A concurrent design-consistency-pass session's color/typography/
+   border-thinning changes were merged, then reverted the same day —
+   **documenting both**, not just the end state, since main's actual
+   history genuinely contains both commits. The revert was confirmed
+   clean: diffed every file PR #14 touched but this session's own work
+   didn't, against the pre-#14 commit — byte-identical, confirming no
+   partial/incomplete revert. PR #14's own description named one
+   deliberately-deferred item — a spacing-token system, not introduced
+   "per instruction" — now carried into `ROADMAP.md`/`KNOWN_ISSUES.md` in
+   this docs update, since it never actually landed in either the first
+   time despite PR #14's description saying it had.
+8. **PR #16 — UI fixes batch 1.** Five items: removed a redundant
+   Settings subtitle; removed a "FUTURE READY" info box from Fee Recovery
+   that directly exposed an internal file path
+   (`src/lib/messaging/whatsapp.ts`) and WhatsApp-provider-swap
+   implementation notes to end users (context preserved in `ROADMAP.md`'s
+   WhatsApp entry, not just deleted); investigated two existing list
+   patterns in the app before touching Receipts (Students list = same
+   flat `divide-y` problem, not a fix; Batches list = genuine per-item
+   Cards) and restyled Receipts to match Batches' card tokens; a mobile
+   zoom-bug investigation that found the *reported* dialog (Add Expense)
+   had no actual font-size violation, but found and fixed a real,
+   separate one in `recovery.tsx` (a `Textarea` with `text-xs`
+   unconditionally overriding the safe `text-base md:text-sm` default);
+   student card three-dot-menu repositioned to the top row next to
+   name/avatar, bumped from a non-standard `h-8 w-8` to this app's actual
+   established `h-11 w-11` row-action convention.
+9. **Deploy/preview confusion, mid-session.** After PR #16 merged, a
+   report that the receipts-card fix "wasn't showing" turned out to be a
+   manual Vercel-dashboard rollback to a pre-#16 deployment (done to
+   escape the disputed PR #14 styling, which inadvertently rolled back
+   #16's genuinely-unrelated fixes along with it) — not a code bug.
+   Confirmed via GitHub's Deployments API (not assumed): the correct
+   commit had deployed successfully; the disputed PR #14 changes were
+   independently confirmed byte-identical-to-reverted in files this
+   session never touched. Real, measured evidence was gathered for a
+   separately-reported perceived navigation-latency regression: bundle
+   size before vs. after the whole Session 4 feature set moved by only
+   +1.06% (56→58 chunks, 3,790,659→3,830,739 bytes) despite two entire
+   new feature systems landing — no evidence of an eager-loading
+   regression of the kind already found and fixed once for `exceljs`.
+10. **PR #17, open, diagnostic-only, not to be merged regardless of
+    outcome.** Investigating the Add Expense mobile zoom bug further:
+    every other input in that dialog already checked out clean (see #8
+    above), so as a targeted test, temporarily removed only the
+    `type="file"` attachment field to isolate whether iOS Safari's native
+    file-picker sheet interacting with the dialog's `position: fixed` +
+    Radix scroll-lock is the trigger — an unconfirmed theory, never
+    guessed into a permanent fix. Pushed to its own preview deployment
+    with the exact URL called out explicitly, given the deploy-confusion
+    in item 9. Result pending as of this document's writing.
+11. **PR #18 — receipt card payment-mode badge reposition.** Moved from
+    the date row to sit inline with the receipt number (top row,
+    right-aligned) — receipt number identifies the transaction, payment
+    mode describes it, a more natural pairing than badge+date. Same
+    "identity + status grouped together at the top" principle as the
+    student-card menu fix in PR #16. Proposed before implementing, same
+    as that change.
+12. **This docs update — third attempt.** PR #10 (opened 2026-08-01,
+    covering Attendance+Expenses doc updates) and an earlier attempt
+    before it both failed to land — **see the process note in Handover
+    Notes** for why, and the recommendation to stop it recurring a third
+    time.
+
+Two items explicitly **not** resolved this session, tracked in
+`KNOWN_ISSUES.md`: the Add Expense zoom bug (root cause still open,
+pending PR #17's test result), and `get_expense_breakdown_by_category`'s
+wrapping adapter function having no caller anywhere in the UI.
 
 1. **CI workflow not yet on `main`.** `.github/workflows/validate-migrations.yml`
    was written and verified logically sound (spins up a real local Supabase
@@ -1067,3 +1244,17 @@ pattern found something a report hadn't yet surfaced.
   session and something in the working tree looks suspiciously
   convenient, treat that as a reason to double-check, not a reason to
   relax.
+- **This document has now failed to get updated alongside its own
+  feature PRs twice** before finally landing here — PR #10 (opened
+  2026-08-01, covering Attendance + Expenses) sat open and unmerged for
+  over a day while feature work kept shipping past it, and at least one
+  earlier attempt before that also didn't land. Both times, the actual
+  cause was the same: docs were filed as a separate PR, competing for
+  review attention against faster-moving feature PRs, and lost. **Bundle
+  doc updates into the same PR as the feature they describe, rather than
+  filing them separately after the fact** — a PR that changes both
+  `attendance.tsx` and `HANDOVER.md` gets reviewed and merged as one
+  unit; a docs-only PR filed a day later has nothing forcing it to get
+  attention before the next three feature PRs bury it. If you're a future
+  session adding a feature, update these four files in the *same* branch,
+  not as a follow-up task.
