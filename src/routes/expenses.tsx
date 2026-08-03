@@ -43,6 +43,7 @@ import {
   addExpenseCategory,
   createExpense,
   deleteExpenseCategory,
+  getExpenseBreakdownByCategory,
   getProfitabilitySummary,
   listExpenseCategories,
   listExpenses,
@@ -121,7 +122,7 @@ function ExpensesPage() {
             <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="dashboard" className="mt-4"><DashboardTab expenses={expenses} categories={categories} /></TabsContent>
+          <TabsContent value="dashboard" className="mt-4"><DashboardTab expenses={expenses} /></TabsContent>
           <TabsContent value="list" className="mt-4"><ListTab expenses={expenses} categories={categories} /></TabsContent>
           <TabsContent value="profit" className="mt-4"><ProfitTab /></TabsContent>
           <TabsContent value="categories" className="mt-4"><CategoriesTab categories={categories} /></TabsContent>
@@ -153,17 +154,19 @@ function Stat({ label, value, icon, tone }: { label: string; value: string; icon
 }
 
 // ------------ Dashboard tab ------------
-function DashboardTab({ expenses, categories }: { expenses: Expense[]; categories: ExpenseCategory[] }) {
+function DashboardTab({ expenses }: { expenses: Expense[] }) {
   const colors = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-4)", "var(--color-chart-5)"];
 
-  const byCat = useMemo(() => {
-    const map = new Map<string, number>();
-    expenses.forEach((e) => map.set(e.categoryId, (map.get(e.categoryId) ?? 0) + e.amount));
-    return Array.from(map, ([id, value]) => ({
-      name: categories.find((c) => c.id === id)?.name ?? "—",
-      value,
-    })).sort((a, b) => b.value - a.value);
-  }, [expenses, categories]);
+  // Previously computed client-side from the full `expenses` array already
+  // in memory (correct, but doesn't scale — loads every expense row just to
+  // sum them locally, and left the get_expense_breakdown_by_category RPC
+  // unused). Now server-aggregated for the same all-time range this always
+  // showed; the RPC already returns rows sorted by total_amount DESC.
+  const breakdownQuery = useQuery({
+    queryKey: ["expenses-category-breakdown"],
+    queryFn: () => getExpenseBreakdownByCategory(GENESIS_DATE, todayLocalISO()),
+  });
+  const byCat = (breakdownQuery.data ?? []).map((r) => ({ name: r.categoryName, value: r.totalAmount }));
 
   const monthly = useMemo(() => {
     const months: { m: string; v: number }[] = [];
@@ -198,7 +201,9 @@ function DashboardTab({ expenses, categories }: { expenses: Expense[]; categorie
       <Card>
         <CardHeader><CardTitle className="text-base">By category</CardTitle></CardHeader>
         <CardContent>
-          {byCat.length === 0 ? (
+          {breakdownQuery.isLoading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : byCat.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">No expenses yet</p>
           ) : (
             <div className="h-48">
@@ -217,17 +222,23 @@ function DashboardTab({ expenses, categories }: { expenses: Expense[]; categorie
       <Card className="xl:col-span-3">
         <CardHeader><CardTitle className="text-base">Top expense categories</CardTitle></CardHeader>
         <CardContent>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={byCat.slice(0, 8)} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                <XAxis dataKey="name" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={inrShort} />
-                <Tooltip formatter={(v: number) => inr(v)} contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }} />
-                <Bar dataKey="value" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {breakdownQuery.isLoading ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
+          ) : byCat.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No expenses yet</p>
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={byCat.slice(0, 8)} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
+                  <XAxis dataKey="name" stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="var(--color-muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={inrShort} />
+                  <Tooltip formatter={(v: number) => inr(v)} contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }} />
+                  <Bar dataKey="value" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -628,13 +639,16 @@ function CategoriesTab({ categories }: { categories: ExpenseCategory[] }) {
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g}</p>
               <div className="space-y-1.5">
                 {list.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between rounded-md border p-2">
-                    <div>
-                      <p className="text-sm font-medium">{c.name}</p>
+                  <div key={c.id} className="flex items-center justify-between gap-2 rounded-md border p-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{c.name}</p>
                       {c.custom && <span className="text-[10px] uppercase tracking-wide text-primary">Custom</span>}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Switch checked={c.active} onCheckedChange={(v) => handleToggle(c.id, v)} />
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{c.active ? "Active" : "Inactive"}</span>
+                      <span className="-m-3 p-3">
+                        <Switch checked={c.active} onCheckedChange={(v) => handleToggle(c.id, v)} />
+                      </span>
                       <RenameCategoryButton id={c.id} current={c.name} />
                       {c.custom && (
                         <Button size="icon" variant="ghost" className="h-11 w-11 text-destructive" aria-label="Delete category" title="Delete category" onClick={() => handleDeleteCategory(c.id)}>
