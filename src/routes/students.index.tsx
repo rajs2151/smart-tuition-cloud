@@ -134,7 +134,70 @@ function StudentsPage() {
             <div className="col-span-1 text-right">Status</div>
             <div className="col-span-1 text-right">Actions</div>
           </div>
-          <div className="divide-y">
+
+          {/* Mobile: a self-contained card per student, independent of the
+              desktop table below — no shared source-order/grid-column
+              mapping between the two, so a change to one can't silently
+              shift the other's columns (this is exactly what broke here:
+              the three-dot menu and status badge were repositioned for
+              this card layout by merging them into fewer, wider grid
+              items, which also silently shifted every desktop column). */}
+          <div className="divide-y md:hidden">
+            {filtered.map((s) => {
+              const collected = collectedByStudent.get(s.id) ?? 0;
+              const billed = s.totalFee - s.discount;
+              const due = Math.max(0, billed - collected);
+              const pct = Math.round((collected / Math.max(1, billed)) * 100);
+              const batchName = data.batches.find((b) => b.id === s.batchId)?.name ?? s.course;
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => navigate({ to: "/students/$id", params: { id: s.id } })}
+                  className="cursor-pointer space-y-2 px-5 py-3 transition hover:bg-accent/40"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
+                          {initials(s.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{s.name}</p>
+                        <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                          {s.rollNo} · <Phone className="h-3 w-3" /> {s.phone}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <StudentRowMenu student={s} />
+                    </div>
+                  </div>
+                  <div>
+                    <Badge variant="secondary" className="font-normal">{batchName}</Badge>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{inr(collected)} / {inr(billed)}</span>
+                      <span className="font-semibold">{pct}%</span>
+                    </div>
+                    <Progress value={pct} className="mt-1.5 h-1.5" />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className={`font-display font-bold ${due > 0 ? "text-destructive" : "text-success"}`}>
+                      {due > 0 ? inr(due) : "Cleared"}
+                    </span>
+                    <Badge variant="outline" className="text-[10px]">{s.status}</Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop: a genuinely separate table body, 6 grid items per
+              row matching the 6 header columns 1:1 - not derived from or
+              shared with the mobile card markup above. */}
+          <div className="hidden divide-y md:block">
             {filtered.map((s) => {
               const collected = collectedByStudent.get(s.id) ?? 0;
               const billed = s.totalFee - s.discount;
@@ -147,49 +210,50 @@ function StudentsPage() {
                   onClick={() => navigate({ to: "/students/$id", params: { id: s.id } })}
                   className="grid cursor-pointer grid-cols-12 items-center gap-3 px-5 py-3 transition hover:bg-accent/40"
                 >
-                  <div className="col-span-12 md:col-span-5 flex items-center justify-between gap-3 min-w-0">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
-                          {initials(s.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">{s.name}</p>
-                        <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
-                          {s.rollNo} · <Phone className="h-3 w-3" /> {s.phone}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <StudentRowMenu student={s} />
+                  <div className="col-span-4 flex min-w-0 items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
+                        {initials(s.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{s.name}</p>
+                      <p className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                        {s.rollNo} · <Phone className="h-3 w-3" /> {s.phone}
+                      </p>
                     </div>
                   </div>
-                  <div className="col-span-6 md:col-span-2">
+                  <div className="col-span-2">
                     <Badge variant="secondary" className="font-normal">{batchName}</Badge>
                   </div>
-                  <div className="col-span-12 md:col-span-2">
+                  <div className="col-span-2">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">{inr(collected)} / {inr(billed)}</span>
                       <span className="font-semibold">{pct}%</span>
                     </div>
                     <Progress value={pct} className="mt-1.5 h-1.5" />
                   </div>
-                  <div className="col-span-12 md:col-span-3 flex items-center justify-between md:justify-end md:gap-3">
+                  <div className="col-span-2 text-right">
                     <span className={`font-display font-bold ${due > 0 ? "text-destructive" : "text-success"}`}>
                       {due > 0 ? inr(due) : "Cleared"}
                     </span>
+                  </div>
+                  <div className="col-span-1 text-right">
                     <Badge variant="outline" className="text-[10px]">{s.status}</Badge>
+                  </div>
+                  <div className="col-span-1 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                    <StudentRowMenu student={s} />
                   </div>
                 </div>
               );
             })}
-            {filtered.length === 0 && (
-              <div className="p-12 text-center text-sm text-muted-foreground">
-                No students match your filters.
-              </div>
-            )}
           </div>
+
+          {filtered.length === 0 && (
+            <div className="p-12 text-center text-sm text-muted-foreground">
+              No students match your filters.
+            </div>
+          )}
         </Card>
       </main>
     </>
