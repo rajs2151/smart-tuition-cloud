@@ -86,33 +86,66 @@ function ReceiptsPage() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-3">
-            {rows.map((p) => (
-              <Link
-                key={p.id}
-                to="/receipts/$id"
-                params={{ id: p.id }}
-                className="grid grid-cols-12 items-center gap-3 rounded-xl border bg-card px-5 py-3 shadow transition hover:bg-accent/40"
-              >
-                <div className="col-span-12 md:col-span-3 flex items-center justify-between md:justify-start md:gap-2">
-                  <span className="font-mono text-sm">{p.receiptNo}</span>
-                  <Badge variant="secondary">{p.mode}</Badge>
-                </div>
-                <div className="col-span-12 md:col-span-4 truncate">
-                  <p className="font-medium">{p.student?.name ?? "—"}</p>
-                  <p className="text-xs text-muted-foreground">{p.student?.rollNo}</p>
-                </div>
-                <div className="col-span-12 md:col-span-5 flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{fmtDate(p.date)}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-display font-bold text-success">{inr(p.amount)}</span>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground md:hidden" />
-                    <ReceiptIcon className="hidden h-4 w-4 text-muted-foreground md:block" />
+          <>
+            {/* Mobile: self-contained card per receipt, independent of the
+                desktop table below - no shared source-order/grid-column
+                mapping between the two (this is exactly what broke here:
+                the mode badge was moved for this card layout by merging
+                it into a different, wider grid item, which also silently
+                shifted every desktop column after it). */}
+            <div className="space-y-3 md:hidden">
+              {rows.map((p) => (
+                <Link
+                  key={p.id}
+                  to="/receipts/$id"
+                  params={{ id: p.id }}
+                  className="block space-y-2 rounded-xl border bg-card px-5 py-3 shadow transition hover:bg-accent/40"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-sm">{p.receiptNo}</span>
+                    <Badge variant="secondary">{p.mode}</Badge>
                   </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                  <div className="truncate">
+                    <p className="font-medium">{p.student?.name ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground">{p.student?.rollNo}</p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">{fmtDate(p.date)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-display font-bold text-success">{inr(p.amount)}</span>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
+            {/* Desktop: a genuinely separate row markup, 6 grid items
+                matching the 6 header columns 1:1 - not derived from or
+                shared with the mobile card markup above. */}
+            <div className="hidden space-y-3 md:block">
+              {rows.map((p) => (
+                <Link
+                  key={p.id}
+                  to="/receipts/$id"
+                  params={{ id: p.id }}
+                  className="grid grid-cols-12 items-center gap-3 rounded-xl border bg-card px-5 py-3 shadow transition hover:bg-accent/40"
+                >
+                  <div className="col-span-2 font-mono text-sm">{p.receiptNo}</div>
+                  <div className="col-span-4 truncate">
+                    <p className="font-medium">{p.student?.name ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground">{p.student?.rollNo}</p>
+                  </div>
+                  <div className="col-span-2 text-sm">{fmtDate(p.date)}</div>
+                  <div className="col-span-2"><Badge variant="secondary">{p.mode}</Badge></div>
+                  <div className="col-span-1 text-right font-display font-bold text-success">{inr(p.amount)}</div>
+                  <div className="col-span-1 text-right">
+                    <ReceiptIcon className="ml-auto h-4 w-4 text-muted-foreground" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </>
         )}
       </main>
     </>
