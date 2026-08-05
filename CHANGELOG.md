@@ -5,56 +5,27 @@ first). Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## 2026-07-31 (Session 4)
-
-### Added
-- **Attendance system.** `attendance_sessions`/`attendance_absences` tables,
-  `save_attendance`/`mark_attendance_status` RPCs (`is_member()` guard +
-  cross-batch-id guard on the former, both tested live against production).
-  `/attendance` route: Take Attendance (present-by-default grid), Reports
-  (batch → day → absentee drill-down), and a top-level Notify tab (flat
-  cross-batch today-only absentee list, live WhatsApp send).
-  `attendance_absences.notified_at` tracks WhatsApp "sent" state
-  server-side so it survives a refresh or a different device.
-- **Expenses system.** `expenses`/`expense_categories` tables (same
-  `is_member()` RLS + soft-delete convention as every other table),
-  per-institute category seeding trigger + one-time backfill,
-  `get_profitability_summary`/`get_expense_breakdown_by_category` RPCs
-  replacing client-side revenue/expense math in `ProfitTab`.
+## 2026-08-03 (docs reconciliation)
 
 ### Fixed
-- **Expenses data-loss root cause.** `src/lib/expenses/store.ts`/
-  `defaults.ts` were entirely `localStorage`-only — confirmed via code
-  trace and a live `audit_logs` query (zero `entity='expense'` rows ever
-  existed). Deleted both files; expenses are now fully server-persisted.
-- **Category-delete false-positive success toast.** The old
-  `deleteCategory` handler was synchronous, un-awaited, and uncaught — it
-  always showed "Category deleted" even though nothing could fail. Now
-  async with real error handling, since `expenses.category_id`'s new
-  `ON DELETE RESTRICT` can genuinely reject a delete.
-- **Attendance migration's `PUBLIC`/`anon` EXECUTE grant.** First pass left
-  `PUBLIC`/`anon` with `EXECUTE` on both attendance RPCs despite the SQL
-  looking correct on read — caught via a direct `information_schema` query,
-  fixed by a follow-on migration. That follow-on migration itself wasn't
-  committed as a file in this repo until this session (see below).
-- **Missing migration file for a live-applied fix.** The `REVOKE ... FROM
-  PUBLIC, anon` fix above was applied directly to production but never
-  committed — `20260730060000_revoke_public_anon_execute_attendance.sql`
-  now exists so a fresh schema rebuild actually matches what's live.
+- **PR #10 (opened 2026-08-01, merged 2026-08-03) and this file's own
+  PR #19 both touched the same four docs files.** GitHub reported the
+  merge as conflict-free, but the automatic merge still produced real
+  corruption: two contradictory "Last updated" lines and two separate
+  "Session 4" sections in `docs/HANDOVER.md` (one of which ended up
+  structurally split by a misplaced `# Known Issues` heading), a
+  chronologically-out-of-order duplicate entry at the top of this file,
+  and two literal duplicate lines plus a misplaced sub-bullet in
+  `ROADMAP.md`. `docs/backend-architecture.md` and the `REVOKE` migration
+  from PR #10 merged cleanly — confirmed, not just assumed, by diffing
+  for duplicate headers. Reconciled by hand: one canonical account per
+  file, preferring PR #10's version wherever it had direct live-database
+  verification (actual query output, actual RPC test results run against
+  production) over a broader but unverified claim, while keeping every
+  PR #10 didn't cover. See the new process note in `docs/HANDOVER.md`'s
+  Handover Notes — a "no textual conflict" merge is not the same thing
+  as a coherent one when two long-diverged branches touch the same docs.
 
-### Docs
-- `docs/backend-architecture.md`: added the four new tables, the two new
-  triggers (per-institute category seeding, `updated_at` extensions), all
-  six new RPCs, a new §9 Known Gaps section, and corrected several stale
-  claims found while editing (the `member_role` enum was still documented
-  as `'owner'|'staff'` only; the table count and hosting-platform claims
-  in the final summary were both out of date).
-- `docs/HANDOVER.md`: new Session 4 entry, updated Completed
-  features/migration list/RPCs, 5 new Known Issues entries (#18–22).
-- `ROADMAP.md`: checked off Attendance tracking; added the Expenses
-  persistence fix as a Phase 1 item.
-- `KNOWN_ISSUES.md`: 5 new entries matching the existing Status/Notes
-  format (2 resolved, 2 flagged-not-fixed, 1 needs-decision).
 ## 2026-08-03 (Session 4, docs update)
 
 ### Added
@@ -64,6 +35,11 @@ first). Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   `docs/HANDOVER.md`'s Handover Notes for why, and the recommendation to
   bundle doc updates into the same PR as the feature they describe going
   forward.
+- `docs/backend-architecture.md` (via PR #10): the four new Session 4
+  tables, two new triggers, six new RPCs, a new §9 Known Gaps section,
+  and corrected several stale claims (the `member_role` enum was still
+  documented as `'owner'|'staff'` only; table count and hosting-platform
+  claims in the final summary were both out of date).
 
 ### Fixed
 - `ROADMAP.md`/`KNOWN_ISSUES.md` now actually contain the spacing-token
@@ -146,14 +122,36 @@ first). Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## 2026-08-01 (PR #9) — Expenses & profitability system
 
+### Fixed
+- **Expenses data-loss root cause**, investigated before any fix was
+  proposed. `src/lib/expenses/store.ts`/`defaults.ts` were entirely
+  `localStorage`-only — confirmed via direct code trace (zero Supabase
+  calls in the file) and a live `audit_logs` query (zero
+  `entity='expense'` rows ever existed, so nothing was restorable
+  server-side either). Both files deleted; expenses are now fully
+  server-persisted.
+- **Category-delete false-positive success toast.** The old
+  `deleteCategory` handler was synchronous, un-awaited, and uncaught — it
+  always showed "Category deleted" even though nothing could fail. Now
+  async with real error handling, since `expenses.category_id`'s new
+  `ON DELETE RESTRICT` can genuinely reject a delete.
+
 ### Added
 - **Server-persisted Expenses** (`expense_categories`, `expenses` tables
-  — previously in-memory only), custom category additions, a
-  Profitability tab backed by `getProfitabilitySummary` (computes Net
-  Profit server-side from real revenue minus real expenses), Excel/CSV
-  export, and `get_expense_breakdown_by_category` (defined, reachable,
-  but no UI component currently calls it — see `KNOWN_ISSUES.md`). New
-  migration `20260731000000_expenses_system.sql`.
+  — same `is_member()` RLS + soft-delete convention as every other
+  table), per-institute category seeding via a creation-time trigger
+  plus a one-time backfill for both existing institutes (24 categories
+  each, confirmed via live query), a Profitability tab backed by
+  `get_profitability_summary`/`getProfitabilitySummary` (computes Net
+  Profit server-side from real revenue minus real expenses — verified
+  live: one synthetic expense inserted and rolled back inside a
+  transaction, RPC output matched an independent manual calculation
+  exactly), Excel/CSV export, and `get_expense_breakdown_by_category`
+  (defined, reachable, but no UI component currently calls its wrapping
+  adapter function — see `KNOWN_ISSUES.md`). This migration included
+  `REVOKE ... FROM PUBLIC, anon` from the start, unlike the attendance
+  migration's first pass below. New migration
+  `20260731000000_expenses_system.sql`.
 
 ## 2026-07-31 (PR #8) — Attendance system, v2
 
@@ -214,7 +212,19 @@ first). Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   holiday/cancelled-lecture states, an institute-level lock-window
   setting restricting teacher/staff edits after a configurable cutoff
   (owner/admin exempt), bilingual (English/Marathi) WhatsApp absence
-  templates. New migration `20260730052621_attendance_system.sql`.
+  templates. Both RPCs' `is_member()`/cross-batch-id guards tested live
+  against production (rolled-back transactions/synthetic fixtures, never
+  real institute data). New migration
+  `20260730052621_attendance_system.sql`.
+
+### Fixed
+- **`PUBLIC`/`anon` still had `EXECUTE` on both attendance RPCs**
+  despite the SQL looking correct on read — caught via a direct
+  `information_schema.routine_privileges` query, fixed live. The
+  follow-on `REVOKE` migration itself wasn't committed as a file in this
+  repo until the 2026-08-03 docs pass below — a case where "fixed live"
+  and "actually in version control" turned out to be two different
+  things.
 
 ---
 

@@ -34,15 +34,6 @@ a new task list. Update in place as items complete or priorities shift.
 - [x] Batch Total Course Fee changes now propagate to every enrolled
   student — done (2026-07-18, Session 3); previously a student's fee was
   only copied from the batch at creation and never updated afterward
-- [x] Expenses moved from client-side `localStorage` to fully
-  server-persisted (Session 4, 2026-07-31) — the localStorage-only
-  implementation was the confirmed root cause of a real user-reported
-  data-loss incident. See `docs/HANDOVER.md` Session 4.
-- [ ] Apply Session 3's four pending migrations to the live database —
-  see `KNOWN_ISSUES.md` ("Pending Migrations Not Yet Applied to
-  Production"); this already caused one real production error
-- [ ] Reports — yearly expense report (aggregate/rollup view, not just
-  per-record listing)
 - [x] Apply Session 3's four pending migrations to the live database —
   done; confirmed all 15 migrations currently on `main` are applied live
   (Session 4 features work end-to-end against real data). See
@@ -88,12 +79,6 @@ a new task list. Update in place as items complete or priorities shift.
   actual codebase. Remaining gap: the pending-amount figures fed into
   these messages still read the same stale `student.paidFee` column
   fixed elsewhere this session — see `KNOWN_ISSUES.md`.
-- [x] Attendance tracking (per batch/student) — done (Session 4,
-  2026-07-30/31): per-batch daily roll-call, holiday/cancelled marking,
-  a Reports drill-down, a persistent WhatsApp notify flow
-  (`attendance_absences.notified_at`, server-side so "sent" state
-  survives a refresh/different device), and a top-level cross-batch
-  Notify tab. See `docs/HANDOVER.md` Session 4.
   - **Provider extensibility note** (moved here from a "Future ready"
     info box on the Fee Recovery page — removed from that user-facing
     screen since it directly named an internal file path and
@@ -104,14 +89,22 @@ a new task list. Update in place as items complete or priorities shift.
     inside `src/lib/messaging/whatsapp.ts` — the rest of the app (template
     editing, message composition, send-trigger UI) doesn't need to change.
 - [x] Attendance tracking (per batch/student) — done (Session 4, PRs
-  #6–#8): present-by-default marking, holiday/cancelled states,
-  institute-level lock window, bilingual WhatsApp absence notices,
-  Reports drill-down (batch → day → notify list) plus a standalone
-  today-only Notify tab
-- [x] Expenses & profitability — done (Session 4, PR #9): server-
-  persisted expenses/categories, Net Profit computed server-side,
-  Excel/CSV export (moved here from being untracked in this roadmap
-  entirely — it shipped without ever being listed as planned work)
+  #6–#8): present-by-default marking grid, holiday/cancelled-lecture
+  states, an institute-level lock-window setting (owner/admin exempt),
+  bilingual (English/Marathi) WhatsApp absence notices, a Reports
+  drill-down (batch → day → notify list), and a persistent WhatsApp
+  notify flow — `attendance_absences.notified_at` tracks "sent" state
+  server-side, not React state, so it survives a refresh or a different
+  device — plus a standalone, top-level, cross-batch, today-only Notify
+  tab. See `docs/HANDOVER.md` Session 4 for the live-verification detail
+  (both RPCs' guards tested against production, not just read from SQL).
+- [x] Expenses & profitability — done (Session 4, PR #9): moved from
+  client-side `localStorage` (confirmed root cause of a real
+  user-reported data-loss incident) to fully server-persisted
+  expenses/categories, Net Profit computed server-side, Excel/CSV
+  export (moved here from being untracked in this roadmap entirely — it
+  shipped without ever being listed as planned work). See
+  `docs/HANDOVER.md` Session 4.
 - [ ] SMS (likely overlapping use case with WhatsApp — decide if both are
   needed or one supersedes the other)
 
