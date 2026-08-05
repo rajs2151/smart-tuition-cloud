@@ -1,6 +1,5 @@
 # Project Handover
 
-_Last updated: July 31, 2026 (Session 4 — Attendance & Expenses systems)_
 _Last updated: August 3, 2026_
 
 ---
@@ -572,86 +571,14 @@ patch the cache.
 
 ---
 
-## Session 4 (July 30–31, 2026) — Attendance + Expenses systems, 5 PRs merged (#6–#9, plus a docs update)
-
-**Attendance system** (`20260730052621_attendance_system.sql`,
-`20260730060000_revoke_public_anon_execute_attendance.sql`,
-`20260730181401_attendance_notified_at.sql`):
-- `attendance_sessions`/`attendance_absences` tables, `save_attendance`/
-  `mark_attendance_status` RPCs. Both RPCs' `is_member()` guard and
-  `save_attendance`'s cross-batch-id guard were tested live against
-  production with real non-member/cross-batch calls (inside rolled-back
-  transactions or against synthetic, immediately-deleted fixtures — never
-  against real institute data), not just read from the SQL.
-- First-pass grant check found `PUBLIC`/`anon` still had `EXECUTE` on both
-  RPCs despite the SQL looking correct — caught via a direct
-  `information_schema.routine_privileges` query, fixed by a follow-on
-  migration. That follow-on migration itself wasn't committed as a file
-  in this repo until this Session 4 docs pass (see Known Issues #22) —
-  worth remembering as a case where "I fixed it live" and "it's actually
-  in version control" turned out to be two different things.
-- Mobile fixes (sticky save bar, controls bar, grid breakpoints), a
-  Reports drill-down (`batches-overview.tsx` → `batch-day-list.tsx` →
-  `day-notify-list.tsx`, replacing a flat date-range list), and a
-  persistent WhatsApp "Notify" flow — `attendance_absences.notified_at`
-  tracks send state server-side (not React state) so it survives a
-  refresh or a different device; sent rows grey out and sink to the
-  bottom rather than disappearing. A later pass added a top-level
-  cross-batch "Notify" tab and restricted `day-notify-list.tsx`'s live
-  send button to today's session only (past days show a read-only
-  badge), a `mergeTemplates`/`resolveDefaults` fix so existing
-  localStorage template state doesn't miss new built-ins, removal of two
-  Reports summary cards, and a fix so deleted students' historical
-  attendance stays visible in Reports/Notify while still correctly
-  excluded from the live attendance-taking grid.
-
-**Expenses system** (`20260731000000_expenses_system.sql`):
-- Root cause of a real user-reported data-loss incident, investigated
-  before any fix was proposed: `src/lib/expenses/store.ts` was entirely
-  `localStorage`-only — confirmed by direct code trace (zero Supabase
-  calls in the file) and a live `audit_logs` query (zero
-  `entity='expense'` rows ever existed, so nothing was restorable
-  server-side either).
-- Replaced with `expenses`/`expense_categories` tables — same
-  `is_member()` RLS and soft-delete convention as every other table,
-  per-institute category seeding via a creation-time trigger (mirroring
-  `add_creator_as_owner`) plus a one-time backfill for both existing
-  institutes (24 categories each, confirmed via live query — an earlier
-  verbal "should be 23" turned out to be an off-by-one hand-count, not a
-  seeding bug). `category_id` uses `ON DELETE RESTRICT`, which required
-  fixing a real latent bug: the old category-delete button was a
-  synchronous, un-awaited, un-caught handler that would have shown a
-  false-positive "Category deleted" success toast even if the new FK
-  constraint rejected the delete.
-- Two new `SECURITY DEFINER` RPCs, `get_profitability_summary` and
-  `get_expense_breakdown_by_category`, replacing client-side
-  revenue/expense math in `ProfitTab`. Verified live: one synthetic
-  expense inserted and rolled back inside a transaction, RPC output
-  matched an independent manual `SUM(payments)-SUM(expenses)` calculation
-  exactly on all four returned figures, against real production payment
-  data.
-- This migration included `REVOKE ... FROM PUBLIC, anon` from the start
-  (unlike the attendance migration's first pass, which needed a
-  follow-on fix) — the standing rule this incident established is now
-  documented explicitly in `docs/backend-architecture.md` §6.
-
-**Also found and flagged, not fixed, during this session** (full detail
-in Known Issues below): `audit_logs.entity = "category"` was dead code
-until the Expenses system's category CRUD started actually writing it;
-messaging templates remain localStorage-only; two `institutes` rows
-share the identical name "Dnyanpeeth Classes," unresolved pending the
-account owner's confirmation of intent.
-
----
-
-# Known Issues
 ## Session 4 (July 30 – August 3, 2026) — 12 merged PRs (#6, #7, #8, #9, #11, #12, #13, #14, #15, #16, #18, plus this docs PR), 2 still open (#10, #17)
 
 Working session covering two full new feature systems (Attendance,
 Expenses), two rounds of mobile/UX auditing, a design-consistency pass
 that was merged then reverted, and — the reason this document exists in
 its current form — a docs-update effort that failed to land twice before
-this attempt. In roughly chronological order:
+this attempt (see the process note in Handover Notes). In roughly
+chronological order:
 
 1. **PR #6 — Attendance system, v1.** New two-table design
    (`attendance_sessions` + `attendance_absences`, absence-only storage —
@@ -660,6 +587,18 @@ this attempt. In roughly chronological order:
    holiday/cancelled-lecture states, bilingual (English/Marathi) WhatsApp
    absence templates, and a lock-window setting restricting edits after a
    configurable cutoff (owner/admin always exempt, enforced client-side).
+   Both RPCs' `is_member()` guard and `save_attendance`'s cross-batch-id
+   guard were tested live against production with real non-member/
+   cross-batch calls (inside rolled-back transactions or against
+   synthetic, immediately-deleted fixtures — never against real institute
+   data), not just read from the SQL. First-pass grant check found
+   `PUBLIC`/`anon` still had `EXECUTE` on both RPCs despite the SQL
+   looking correct — caught via a direct
+   `information_schema.routine_privileges` query, fixed by a follow-on
+   migration that itself wasn't committed as a file in this repo until
+   this Session 4 docs pass (see Known Issues #22 below) — worth
+   remembering as a case where "I fixed it live" and "it's actually in
+   version control" turned out to be two different things.
 2. **PR #7 — mobile fixes, Reports redesign, Notify list.** The v1 sticky
    save bar and controls row didn't wrap on phone-width viewports — fixed.
    Replaced a flat date-range report with a batch-first drill-down (batch
@@ -680,22 +619,48 @@ this attempt. In roughly chronological order:
    edited/custom templates completely untouched — verified this
    specifically preserves user edits even when a built-in's default
    content later changes, by tracing the id-based filter logic, not just
-   asserting it. Also: removed the two "Overall attendance"/"Lowest
-   attendance" Reports cards (confirmed still present post-redesign, then
-   removed per instruction), and fixed a real PRD-violating bug found
-   while verifying deleted-student handling — the shared students query
-   for the whole Attendance route excluded soft-deleted students, which
-   meant a deleted student's *historical* absence rows silently vanished
-   from Reports too, not just the live marking grid. Fixed by fetching
-   the unfiltered list once and letting the live grid's own existing
-   client-side filter continue to exclude them there only.
-4. **PR #9 — Expenses & profitability system.** Migrated Expenses from
-   in-memory-only to fully server-persisted (`expense_categories`,
-   `expenses`), added a Profitability tab backed by a
-   `getProfitabilitySummary` RPC (computes Net Profit server-side from
-   real revenue minus real expenses) and `get_expense_breakdown_by_category`
-   (defined and reachable, but no UI component currently calls its
-   wrapping adapter function — see `KNOWN_ISSUES.md`).
+   asserting it. The underlying storage is still `localStorage`, not
+   server-side — this fixed the specific stale-template bug, not the
+   broader architectural choice; see `KNOWN_ISSUES.md`. Also: removed the
+   two "Overall attendance"/"Lowest attendance" Reports cards (confirmed
+   still present post-redesign, then removed per instruction), and fixed
+   a real PRD-violating bug found while verifying deleted-student
+   handling — the shared students query for the whole Attendance route
+   excluded soft-deleted students, which meant a deleted student's
+   *historical* absence rows silently vanished from Reports too, not just
+   the live marking grid. Fixed by fetching the unfiltered list once and
+   letting the live grid's own existing client-side filter continue to
+   exclude them there only.
+4. **PR #9 — Expenses & profitability system.** Root cause of a real
+   user-reported data-loss incident, investigated before any fix was
+   proposed: `src/lib/expenses/store.ts` was entirely `localStorage`-only
+   — confirmed by direct code trace (zero Supabase calls in the file) and
+   a live `audit_logs` query (zero `entity='expense'` rows ever existed,
+   so nothing was restorable server-side either). Replaced with
+   `expenses`/`expense_categories` tables — same `is_member()` RLS and
+   soft-delete convention as every other table, per-institute category
+   seeding via a creation-time trigger (mirroring `add_creator_as_owner`)
+   plus a one-time backfill for both existing institutes (24 categories
+   each, confirmed via live query — an earlier verbal "should be 23"
+   turned out to be an off-by-one hand-count, not a seeding bug).
+   `category_id` uses `ON DELETE RESTRICT`, which required fixing a real
+   latent bug: the old category-delete button was a synchronous,
+   un-awaited, un-caught handler that would have shown a false-positive
+   "Category deleted" success toast even if the new FK constraint
+   rejected the delete. Two new `SECURITY DEFINER` RPCs,
+   `get_profitability_summary` and `get_expense_breakdown_by_category`
+   (client-side wrapped as `getProfitabilitySummary`/
+   `getExpenseBreakdownByCategory` in `src/lib/data/adapter.ts` — the
+   latter wrapper has no caller anywhere in the UI, see
+   `KNOWN_ISSUES.md`), replacing client-side revenue/expense math in
+   `ProfitTab`. Verified live: one synthetic expense inserted and rolled
+   back inside a transaction, RPC output matched an independent manual
+   `SUM(payments)-SUM(expenses)` calculation exactly on all four returned
+   figures, against real production payment data. This migration included
+   `REVOKE ... FROM PUBLIC, anon` from the start (unlike the attendance
+   migration's first pass, which needed a follow-on fix) — the standing
+   rule this incident established is now documented explicitly in
+   `docs/backend-architecture.md` §6.
 5. **PRs #11–#12 — mobile/perf audit, round 1.** Sidebar and tap-target
    fixes, dialog font-size fixes, confirmed `staleTime`/route-`preload`
    tuning still intact, `exceljs` kept out of the shared bundle via its
@@ -767,12 +732,26 @@ this attempt. In roughly chronological order:
     covering Attendance+Expenses doc updates) and an earlier attempt
     before it both failed to land — **see the process note in Handover
     Notes** for why, and the recommendation to stop it recurring a third
-    time.
+    time. A follow-on reconciliation was needed after both PR #10 and
+    this update's own PR #19 merged: GitHub reported no textual conflict,
+    but the automatic merge still produced duplicated/misordered content
+    across `HANDOVER.md`/`CHANGELOG.md`/`ROADMAP.md` — see the process
+    note on merge-conflict-checking in Handover Notes.
 
-Two items explicitly **not** resolved this session, tracked in
-`KNOWN_ISSUES.md`: the Add Expense zoom bug (root cause still open,
-pending PR #17's test result), and `get_expense_breakdown_by_category`'s
-wrapping adapter function having no caller anywhere in the UI.
+**Also found and flagged, not fixed, during this session** (full detail
+in Known Issues below): `audit_logs.entity = "category"` was dead code
+until the Expenses system's category CRUD started actually writing it;
+messaging templates remain localStorage-only architecturally; two
+`institutes` rows share the identical name "Dnyanpeeth Classes,"
+unresolved pending the account owner's confirmation of intent. Two items
+still genuinely open as of this writing: the Add Expense zoom bug (root
+cause unconfirmed, pending PR #17's test result), and
+`get_expense_breakdown_by_category`'s wrapping adapter function having
+no caller anywhere in the UI.
+
+---
+
+# Known Issues
 
 1. **CI workflow not yet on `main`.** `.github/workflows/validate-migrations.yml`
    was written and verified logically sound (spins up a real local Supabase
@@ -1258,3 +1237,30 @@ pattern found something a report hadn't yet surfaced.
   attention before the next three feature PRs bury it. If you're a future
   session adding a feature, update these four files in the *same* branch,
   not as a follow-up task.
+- **When PR #10 finally did merge (2026-08-03, alongside this document's
+  own docs-update PR #19), the merge itself broke things.** Both PRs had
+  independently edited this file, `CHANGELOG.md`, and `ROADMAP.md` —
+  long-diverged branches, same files. GitHub reported no textual
+  conflict, but the automatic result was still genuinely corrupted: two
+  contradictory "Last updated" lines and two separate "Session 4"
+  sections here (one split in half by a `# Known Issues` heading that
+  ended up landing in the middle of it — a real structural break, not
+  cosmetic), a duplicate entry sitting out of chronological order at the
+  top of `CHANGELOG.md`, and two literal duplicate checkbox lines plus a
+  misplaced sub-bullet (WhatsApp-provider content nested under the wrong
+  parent, Attendance) in `ROADMAP.md`. This was caught only because it
+  was independently re-verified against both source PRs' actual diffs
+  after merging — GitHub's "no conflict" signal gave zero indication
+  anything was wrong. Reconciling it took real editorial judgment, not a
+  mechanical dedup: where the two accounts described the same event
+  differently, PR #10's version won wherever it had direct
+  live-database verification (real query output, real RPC test results
+  run against production) that this session's broader but unverified
+  account lacked; this session's account won everything PR #10 simply
+  never covered (PRs #11 through #18, the design-pass revert, the
+  deploy-confusion incident). **If you're merging two branches that both
+  touch the same docs files, "no conflict reported" is necessary, not
+  sufficient — diff the actual post-merge content against both source
+  branches before trusting it, the same discipline as reviewing a code
+  merge.** See `KNOWN_ISSUES.md`'s process-note entry for the short
+  version.

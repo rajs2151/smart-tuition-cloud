@@ -1,5 +1,30 @@
 # Known Issues
 
+## Process Note: "No Textual Conflict" Isn't the Same as "Coherent Merge"
+
+Status:
+Resolved, but worth keeping as a process note so it isn't repeated
+
+Notes:
+PR #10 (opened 2026-08-01) and this repo's own PR #19 (2026-08-03) both
+independently edited `docs/HANDOVER.md`, `CHANGELOG.md`, and
+`ROADMAP.md` — long-diverged branches, same files. GitHub merged both
+with no reported textual conflict, but the automatic result was still
+genuinely broken: two contradictory "Last updated" lines and two
+separate "Session 4" sections in `HANDOVER.md` (one structurally split
+by a misplaced heading landing mid-section), a duplicate entry sitting
+out of chronological order at the top of `CHANGELOG.md`, and two literal
+duplicate checkbox lines plus a misplaced sub-bullet in `ROADMAP.md`.
+Caught only because someone asked to independently re-verify the merged
+result against the original diffs, not because GitHub flagged anything.
+**When merging two branches that both touch the same docs files, treat
+"no conflict reported" as necessary, not sufficient — diff the actual
+post-merge content against both source branches before trusting it,
+the same way code changes get reviewed.** See `docs/HANDOVER.md`'s
+Handover Notes for the full incident writeup.
+
+---
+
 ## Login / Onboarding
 
 Status:
