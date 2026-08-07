@@ -461,10 +461,13 @@ function ExpenseDialog({ editing, categories, trigger }: { editing?: Expense; ca
           </div>
           <Field label="Vendor (optional)"><Input value={vendor} onChange={(e) => setVendor(e.target.value)} /></Field>
           <Field label="Description"><Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} /></Field>
-          <Field label="Attachment (bill / invoice / receipt)">
-            <Input type="file" onChange={(e) => setAttachmentName(e.target.files?.[0]?.name ?? "")} />
-            {attachmentName && <p className="mt-1 text-xs text-muted-foreground">Attached: {attachmentName}</p>}
-          </Field>
+          {/* DIAGNOSTIC: Attachment field temporarily removed to isolate the
+              reported Add Expense mobile zoom bug — testing whether the
+              type="file" input is the trigger (iOS Safari native
+              file-picker + position:fixed dialog + scroll-lock interaction
+              hypothesis, unconfirmed). Not a permanent removal — restore
+              this Field block once the test result is in. See
+              KNOWN_ISSUES.md / this branch's PR description for context. */}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
