@@ -8,7 +8,18 @@ this project, Supabase, or TanStack Start.
 
 ## 1. Prerequisites
 
-- **Node.js 20+** and **npm** (or `bun`, if you prefer — both are supported)
+- **Node.js** — no version is pinned anywhere in this repo: no `engines`
+  field in `package.json`, no `.nvmrc`, no `.node-version`, and no CI
+  workflow file exists yet to infer one from (see Known Gotchas below).
+  Confirmed by checking all of these directly, not assumed absent. If
+  you're setting this up for the first time, use whatever recent LTS
+  Node version you have — but if you're the project owner, worth pinning
+  an actual tested version somewhere (an `.nvmrc` is the easiest fix) so
+  this stops being a guess for the next person.
+- **npm** — the only lockfile actually committed is `package-lock.json`.
+  An earlier version of this guide claimed bun was "also supported"; no
+  `bun.lockb` exists anywhere in the repo to back that up, so that claim
+  is removed here rather than repeated unverified. Use `npm`.
 - A **Supabase account** — free at [supabase.com](https://supabase.com)
 - Optionally, the **Supabase CLI**, if you want to apply migrations from your
   terminal instead of pasting SQL into the dashboard:
@@ -69,39 +80,57 @@ of them run.
    more may have been added since this guide was written) and paste-run its
    full contents, one file at a time.
 
-Either way, when you're done you should see 7 tables under **Table Editor**:
+Either way, when you're done you should see 11 tables under **Table Editor**:
 `institutes`, `institute_members`, `batches`, `students`, `payments`,
-`receipts`, `audit_logs`.
+`receipts`, `audit_logs`, `attendance_sessions`, `attendance_absences`,
+`expense_categories`, `expenses`. There are 16 migration files as of this
+writing, spanning `20260703064918_...` through `20260731000000_...` — check
+`supabase/migrations/` directly for the current count/range, since more may
+have been added since this guide was last updated.
 
 ---
 
 ## 5. Configure your `.env`
 
-Create a `.env` file at the repo root (copy the format below, filling in your
-own values from step 3):
+**This repo has no `.env.example` file** — confirmed by checking, not assumed
+absent. What's below is the complete, real list, read directly from
+`src/integrations/supabase/client.ts` rather than guessed:
+
+Create a `.env` file at the repo root:
 
 ```bash
-SUPABASE_PROJECT_ID="<your-project-ref>"
-SUPABASE_PUBLISHABLE_KEY="<your anon/public key>"
 SUPABASE_URL="https://<your-project-ref>.supabase.co"
-VITE_SUPABASE_PROJECT_ID="<your-project-ref>"
-VITE_SUPABASE_PUBLISHABLE_KEY="<your anon/public key>"
+SUPABASE_PUBLISHABLE_KEY="<your anon/public key>"
 VITE_SUPABASE_URL="https://<your-project-ref>.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY="<your anon/public key>"
 ```
 
 Both the `VITE_`-prefixed and plain versions of each variable are required —
 the `VITE_*` ones are read by the browser bundle, the plain ones by
-server-side code. They should have identical values.
+server-side code (`client.ts` falls back to the plain name if the `VITE_`
+one isn't set). They should have identical values. That's the complete list
+of variables the app actually needs to start and run — two logical values,
+four env var names.
+
+**Not currently required, but worth knowing about:** `SUPABASE_SERVICE_ROLE_KEY`
+is read by `src/integrations/supabase/client.server.ts` and
+`src/integrations/supabase/auth-middleware.ts` (an admin client that bypasses
+RLS, and an auth middleware helper) — but as of this writing, neither file
+has any importer anywhere in the app. Confirmed by grepping the whole `src/`
+tree, not assumed. You don't need this variable to run the app today; it
+exists as scaffolding for future server-side admin functionality. If you add
+a server function that imports `client.server.ts`, you'll need to add it
+then, from your project's **Settings → API → service_role key**.
 
 > **Note on committing `.env`:** the anon/public key and project URL are
 > designed by Supabase to be safe to expose client-side — every visitor to
 > your deployed app receives them anyway, in their browser's network tab.
-> They are **not** a secret in the way a password or the service-role key
-> is. That said, the normal convention is still to keep `.env` out of git
-> (add it to `.gitignore`) and commit an `.env.example` with placeholder
+> They are **not** a secret in the way a password, or the service-role key
+> above, is. That said, the normal convention is still to keep `.env` out of
+> git (add it to `.gitignore`) and commit an `.env.example` with placeholder
 > values instead, so rotating a key later doesn't require touching tracked
-> files. This repo does not currently follow that convention — worth
-> adopting if you fork or extend this project.
+> files. This repo does not currently do that — worth adopting if you fork
+> or extend this project.
 
 ---
 
@@ -175,6 +204,49 @@ including why it deliberately doesn't create the Auth accounts for you.
 
 ---
 
+## Known Gotchas
+
+Three things worth knowing before you're deep into this project, each drawn
+from a real incident already documented elsewhere in this repo — not
+hypothetical warnings.
+
+**Grant/RLS convention — don't trust a migration's SQL by itself.** Postgres
+grants some privileges to `PUBLIC` by default unless explicitly revoked,
+which isn't obvious from reading a `CREATE TABLE`/`CREATE FUNCTION`
+statement alone. This project's convention: every new table gets
+`REVOKE ALL ... FROM PUBLIC, anon` in the *same* migration that creates it;
+every new `SECURITY DEFINER` RPC gets an explicit `is_member()` guard inside
+the function body (RLS does not apply inside a `SECURITY DEFINER`
+function — it runs as the function owner) plus
+`GRANT EXECUTE ... TO authenticated` with `PUBLIC`/`anon` explicitly
+revoked. Verify via `information_schema.routine_privileges` /
+`information_schema.role_table_grants` directly before considering any
+migration done — the attendance system's first migration looked correct on
+read but actually left `PUBLIC`/`anon` with `EXECUTE` on both its RPCs,
+caught only by that direct query. Full history in `KNOWN_ISSUES.md` and
+`docs/backend-architecture.md`.
+
+**Two `institutes` rows share the name "Dnyanpeeth Classes."** Found during
+the Expenses system's institute backfill
+(`5577d52e-84da-4272-8f58-c621cf115c63` and
+`ca9b2db1-3a4d-4f38-ba97-f716598bb86b`) — not a seeding bug, both rows
+correctly got their full set of default categories. Unresolved pending the
+account owner confirming whether this is intentional. If you're building
+anything that assumes institute names are unique, they currently aren't.
+See `KNOWN_ISSUES.md`.
+
+**Don't assume a merge auto-deployed correctly — confirm the commit hash.**
+This project had a real incident where a Vercel dashboard rollback (done to
+escape one disputed change) silently took a set of unrelated, already-merged
+fixes back out with it, because the rollback targeted a deployment that
+predated them. The fix wasn't guessing — it was checking GitHub's
+Deployments API directly to confirm which commit was actually live in
+Production and whether that deployment's status was really `success`. If
+something you just merged "isn't showing up," check that before assuming
+your code is wrong. Full incident writeup in `docs/HANDOVER.md`'s Session 4.
+
+---
+
 ## Troubleshooting
 
 **Stuck on "Set up your institute" even after creating one:** almost always
@@ -188,7 +260,7 @@ expected grants).
 only — if you see an OAuth-related error, you're likely running an older
 version of the code before that switch; check you're on the latest `main`.
 
-**Build fails with a Vite/env error:** double-check all 6 variables from
+**Build fails with a Vite/env error:** double-check all 4 variables from
 step 5 are present in `.env` and that you restarted `npm run dev` after
 creating/editing it (Vite only reads `.env` at startup).
 
