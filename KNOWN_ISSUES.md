@@ -87,98 +87,55 @@ calling this fully closed end-to-end.
 ## Add Expense Mobile Zoom Bug
 
 Status:
-Open — root cause unconfirmed, active investigation (PR #17)
+Fix in progress (2026-08-09 audit) — needs phone confirmation
 
 Issue:
-Reported: opening "Add Expense" on mobile leaves the page zoomed
-out/misaligned, persisting after closing the dialog and across
-subsequent tab switches until manually reset.
+Reported: Expenses on mobile leaves the page zoomed out/misaligned,
+persisting after closing dialogs / switching tabs until manually reset.
 
-Investigated and ruled out:
-- Every `<Input>`/`<Textarea>`/`<Select>` in `ExpenseDialog` itself uses
-  the app's safe default (`text-base` at the base/mobile breakpoint,
-  `md:text-sm` only for desktop) — no per-instance override found.
-- A real, separate sub-16px violation *was* found and fixed this
-  session, but in a different file: `recovery.tsx`'s reminder-
-  customization `Textarea` had `text-xs` (12px) unconditionally
-  overriding the safe default via tailwind-merge. Fixed. Confirmed via
-  before/after lint diff that this didn't affect anything else.
+Root causes identified in audit (stacked, not mutually exclusive):
+1. **Horizontal overflow from the 5-tab Expenses `TabsList`** (strongest
+   match for "zooms out") — `expenses.tsx` used a non-wrapping
+   `inline-flex` tab bar with no `overflow-x-auto`, unlike Settings which
+   already fixed this pattern. Wide content forces mobile browsers to
+   shrink the visual viewport.
+2. **`SelectTrigger` hardcoded `text-sm` (14px)** in
+   `src/components/ui/select.tsx` — ExpenseDialog uses it twice; iOS may
+   auto-zoom on focus for sub-16px controls.
+3. **`Input` `file:text-sm` (14px)** on the attachment field — same class
+   of sub-16px violation as (2).
 
-Currently being tested (in order, each a distinct, separately-checkable
-mechanism — not the same theory restated):
-1. **The `type="file"` attachment input** (PR #17, result pending as of
-   this writing) — tests two different possible explanations at once,
-   worth untangling if the zoom turns out to disappear:
-   (a) an unconfirmed WebKit-specific theory: iOS Safari's native
-   file-picker sheet interacting badly with the dialog's
-   `position: fixed` + Radix's internal scroll-lock, leaving the
-   viewport miscalculated after the sheet closes — nothing to do with
-   font-size at all; or
-   (b) a **newly-found, more mundane, directly comparable-to-recovery.tsx
-   possibility**: the shared `Input` component applies `file:text-sm`
-   (14px) to the "Choose file" button label specifically —
-   unconditionally, no `md:` override, unlike the input's own overall
-   `text-base md:text-sm`. This was missed in the original investigation,
-   which only checked overall input text size, not the `file:*` variant.
-   If removing the file input makes the zoom disappear, a follow-up test
-   (restore the field, but override just `file:text-base`) is needed to
-   tell (a) and (b) apart — PR #17's test alone can't distinguish them.
-2. **`SelectTrigger`'s hardcoded `text-sm`** (14px, no `md:` override,
-   confirmed present at `src/components/ui/select.tsx` — `ExpenseDialog`
-   uses it twice, Category and Payment mode) — the current lead per
-   testing plan as of this writing. Worth noting for calibration: a
-   `SelectTrigger` is a button/combobox, not a native text-typing
-   surface, so it's a structurally different candidate than an `<Input>`/
-   `<Textarea>` — mobile browsers' auto-zoom-on-focus is specifically
-   documented as a text-input-focus behavior. Flagging this as a reason
-   it's a slightly lower-confidence lead than a native input would be,
-   not a reason to skip testing it.
-
-No live iOS Safari device has been available to any session working on
-this — every step above was investigated via code reading, not
-reproduced firsthand. Don't close this out as resolved based on a
-type-checks-clean/builds-clean verification alone; it needs an actual
-device confirmation.
+Fixes applied this session: scrollable Expenses tabs; `text-base
+md:text-sm` on `SelectTrigger`; `file:text-base md:file:text-sm` on
+`Input`. Still needs a real phone confirmation before closing.
 
 ---
 
-## `get_expense_breakdown_by_category` — Reachable, But Nothing Calls It
+## `get_expense_breakdown_by_category` — Was Unused, Now Wired
 
 Status:
-Confirmed dead code, one level removed from the RPC itself
+Resolved (Expenses Dashboard uses it)
 
-Issue:
-The RPC (`supabase/migrations/20260731000000_expenses_system.sql`) *is*
-wired into a real adapter function,
-`getExpenseBreakdownByCategory()` (`src/lib/data/adapter.ts`) — so it's
-not dead at the SQL/RPC level. But grepping every `.tsx` file for a call
-to that adapter function turns up nothing — no route or component
-anywhere in the app actually calls it. The RPC exists, is grantable, is
-correctly typed, and never fires from the UI. Either wire it into the
-Expenses Reports/Categories tab (a natural fit — the plumbing already
-returns exactly a category breakdown), or remove it if it's not
-actually planned to be used.
+Notes:
+`DashboardTab` in `expenses.tsx` now calls
+`getExpenseBreakdownByCategory()` via React Query. The earlier "dead
+code" finding is obsolete.
 
 ---
 
 ## Categories Tab: Switch Tap-Target and Label Gaps
 
 Status:
-Confirmed
+Partially fixed (2026-08-09) — aria-label added; visual control still `h-5 w-9`
+but hit area already expanded via `-m-3 p-3` wrapper
 
 Issue:
 The category active/inactive `<Switch>` in Expenses → Categories
 (`src/routes/expenses.tsx`) is `h-5 w-9` (20×36px) via the shared
-`Switch` component (`src/components/ui/switch.tsx`) — well under the
-44px minimum tap-target convention already established elsewhere in this
-app (`h-11 w-11`, used in `batches.tsx`/`expenses.tsx`'s own delete
-button right next to this same Switch). It also has no `aria-label` or
-associated `<label>`/`htmlFor` — the category name text sits visually
-next to it but isn't programmatically linked, so a screen reader
-announces only "switch, on/off" with no indication of which category.
-The adjacent Delete button in the same row does have `aria-label`/
-`title` — this Switch is the outlier in its own row, not just relative to
-the rest of the app.
+`Switch` component. An `aria-label` is now set so screen readers announce
+which category is toggled. Enlarging the shared Switch globally was
+deferred to avoid visual churn across Settings; the padded wrapper keeps
+the tap target usable.
 
 ---
 
@@ -322,23 +279,19 @@ still-open PR #10).
 ## `student.paidFee` Still Read Directly In Three Places
 
 Status:
-Flagged, not fixed — re-confirmed still accurate as of Session 4
+Fixed on recovery + payment-row-menu (2026-08-09); whatsapp `buildContext`
+documents the fallback
 
 Issue:
 Session 3 found and fixed a recurring bug where several screens read
 `student.paidFee` (a column reconciled by a best-effort background step)
-instead of deriving Collected live from the payments ledger — fixed on
-Student Details, Fees list, Batch Fee Report, Dashboard, Student List,
-and the individual receipt page. Grepping the codebase after those
-fixes turned up three more places with the same pattern, not yet
-touched: the WhatsApp acknowledgement subtype/pending-amount logic
+instead of deriving Collected live from the payments ledger. The last
+call sites were: WhatsApp acknowledgement pending-amount logic
 (`src/components/payment-row-menu.tsx`, `src/lib/messaging/whatsapp.ts`)
-and the recovery/reminders page (`src/routes/recovery.tsx`). Re-checked
-directly against current code during this Session 4 docs pass — all
-three still read `student.paidFee` unchanged; nothing in the Session 4
-feature work happened to touch this. Same staleness risk; fixing these
-means loading each student's payment list on pages that don't currently
-fetch it.
+and the recovery/reminders page (`src/routes/recovery.tsx`). Recovery and
+PaymentRowMenu now derive paid totals from the payments ledger.
+`buildContext` still falls back to `student.paidFee` only when the caller
+does not pass `pending` / payment — prefer passing ledger values.
 
 ---
 
@@ -395,15 +348,74 @@ the full writeup.
 ## Messaging Templates Still `localStorage`-Only
 
 Status:
-Flagged, not fixed
+Open — P0 data-residency risk (reconfirmed 2026-08-09)
 
 Issue:
-`src/lib/messaging/store.ts` persists to browser `localStorage`, not
-Supabase — the same category of risk that caused the Expenses data-loss
-incident above. A `mergeTemplates`/`resolveDefaults` fix was added during
-the Attendance build (Session 4) so existing localStorage state doesn't
-silently miss new built-in templates, but the underlying storage is still
-local, not server-side/cross-device.
+`src/lib/messaging/store.ts` persists templates, default selection, and
+comm logs (`vidyafee.messaging.v1`) to browser `localStorage`, not
+Supabase — same category of risk that caused the Expenses data-loss
+incident. Templates/edits and WhatsApp send history do not sync across
+devices or staff members. Needs a Supabase-backed migration
+(`message_templates` + `comm_logs` or equivalent) with one-time local →
+server import.
+
+---
+
+## Recycle Bin / Audit Log Dual-Write Was Browser-Local
+
+Status:
+Fixed (2026-08-09) — UI now reads soft-deleted rows + `audit_logs` from Supabase
+
+Issue:
+Soft-delete for students/batches/payments *did* set `deleted` /
+`deleted_at` in Supabase, and `logAudit` write-through inserted into
+`audit_logs`. But the Recycle Bin UI listed items from
+`vidyafee.audit.v1` in `localStorage` via `listRecycle()` /
+`listLogs()`, while Deleted Expenses correctly queried the DB. Result:
+deleted students/batches/payments invisible on another phone/browser;
+audit trail incomplete cross-device. Recycle Bin + Audit Log now query
+Supabase; `logAudit` writes only to `audit_logs`; local mirror removed.
+
+---
+
+## Local Storage Inventory (2026-08-09 Audit)
+
+Status:
+Catalogued — action per item below
+
+| Store | Path | Verdict |
+| --- | --- | --- |
+| Auth session | `integrations/supabase/client.ts` → `localStorage` | Acceptable — Supabase Auth must persist JWT refresh tokens client-side |
+| Theme preference | `components/theme-toggle.tsx` | Acceptable — UI preference only, not business data |
+| Messaging templates + logs | `lib/messaging/store.ts` | **Not OK** — migrate to Supabase (see above) |
+| Audit + recycle mirror | `lib/audit/store.ts` | **Not OK** — stop relying on local mirror; read `audit_logs` + soft-deleted rows |
+| React Query cache | in-memory (`staleTime: 30s`) | Acceptable — not durable device storage |
+| Institute logo as data URL | Settings upload → `institutes.logo_url` | **Risk** — base64 in Postgres inflates free-tier 500 MB DB; prefer Supabase Storage |
+| Expense "attachment" | name only in `expenses.attachment_name` | **Gap** — file never uploaded; only filename string saved |
+
+---
+
+## Free-Tier Scale Risk (50–60 Institutes / ~500–600 Students)
+
+Status:
+Architectural guidance — not a code bug yet
+
+Issue:
+Target load fits Auth MAU easily (≪ 50k) but free tier is tight on:
+- **500 MB DB** — `select("*")` everywhere + base64 logos + unbounded
+  `listExpenses()` / `listPayments()` / `listStudents()` per page load
+  will grow egress and RAM pressure on the shared free compute.
+- **5 GB egress / month** — dashboard + app-header each refetch full
+  student + payment lists; with ~60 concurrent owners this is the
+  first limit likely to bite.
+- **Project pause after 1 week inactivity** — free projects can pause;
+  not suitable as a hard uptime promise for paying coaching owners.
+- **No downloadable backups on free** — operational risk.
+
+Mitigations already partially present: React Query `staleTime: 30_000`,
+expense category breakdown RPC. Still needed: narrower selects, date-
+range pagination for expenses/payments, Storage for logos/attachments,
+avoid N+1 / duplicate list fetches (e.g. app-header search).
 
 ---
 

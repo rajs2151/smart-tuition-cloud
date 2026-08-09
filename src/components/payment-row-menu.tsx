@@ -21,7 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-import { updatePayment, voidPayment } from "@/lib/data/adapter";
+import { updatePayment, voidPayment, listPaymentsByStudent } from "@/lib/data/adapter";
 import { useSession } from "@/lib/auth/session";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { getMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
@@ -34,11 +34,19 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
   const [editOpen, setEditOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
 
-  const sendWhatsAppReceipt = () => {
+  const sendWhatsAppReceipt = async () => {
     if (!student) return;
     const { templates, defaults } = getMessaging();
     const billed = student.totalFee - student.discount;
-    const pending = Math.max(0, billed - student.paidFee);
+    // Ledger-derived paid total — do not trust student.paidFee cache.
+    let paid = 0;
+    try {
+      const ledger = await listPaymentsByStudent(student.id);
+      paid = ledger.filter((p) => !p.voided).reduce((sum, p) => sum + p.amount, 0);
+    } catch {
+      paid = student.paidFee;
+    }
+    const pending = Math.max(0, billed - paid);
     const subType = pending === 0 ? "full" : payment.type === "admission" ? "admission" : "partial";
     const tpl =
       templates.find((t) => t.id === defaults.acknowledgement) ??

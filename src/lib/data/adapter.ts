@@ -1014,3 +1014,76 @@ export async function getExpenseBreakdownByCategory(from: string, to: string): P
     totalAmount: Number(row.total_amount ?? 0),
   }));
 }
+
+/** Soft-deleted students for Recycle Bin — reads Supabase, not localStorage. */
+export async function listDeletedStudents(): Promise<Student[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .from("students")
+    .select("*")
+    .eq("institute_id", instId)
+    .eq("deleted", true)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(toStudent);
+}
+
+export async function listDeletedBatches(): Promise<Batch[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .from("batches")
+    .select("*")
+    .eq("institute_id", instId)
+    .eq("deleted", true)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(toBatch);
+}
+
+export async function listDeletedPayments(): Promise<Payment[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("institute_id", instId)
+    .eq("deleted", true)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(toPayment);
+}
+
+export type AuditLogRow = {
+  id: string;
+  entity: string;
+  entityId: string;
+  action: string;
+  by: string;
+  at: string;
+  summary?: string;
+};
+
+/** Recent audit trail from Supabase `audit_logs` (cross-device). */
+export async function listAuditLogs(limit = 200): Promise<AuditLogRow[]> {
+  const instId = activeInstituteIdOrNull();
+  if (!instId) return [];
+  const { data, error } = await supabase
+    .from("audit_logs")
+    .select("id, entity, entity_id, action, by_user, at, summary")
+    .eq("institute_id", instId)
+    .order("at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row: any) => ({
+    id: row.id,
+    entity: row.entity,
+    entityId: row.entity_id,
+    action: row.action,
+    by: row.by_user ?? "",
+    at: row.at,
+    summary: row.summary ?? undefined,
+  }));
+}
+

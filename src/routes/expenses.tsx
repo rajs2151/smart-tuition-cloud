@@ -114,12 +114,15 @@ function ExpensesPage() {
         </div>
 
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="list">All Expenses</TabsTrigger>
-            <TabsTrigger value="profit">Profitability</TabsTrigger>
-            <TabsTrigger value="categories">Categories</TabsTrigger>
-            <TabsTrigger value="reports">Reports</TabsTrigger>
+          {/* Five labels overflow a phone-width row; without horizontal
+              scroll the page grows wider than the viewport and mobile
+              browsers shrink ("zoom out") the whole Expenses screen. */}
+          <TabsList className="flex h-auto w-full flex-nowrap justify-start overflow-x-auto">
+            <TabsTrigger value="dashboard" className="shrink-0">Dashboard</TabsTrigger>
+            <TabsTrigger value="list" className="shrink-0">All Expenses</TabsTrigger>
+            <TabsTrigger value="profit" className="shrink-0">Profitability</TabsTrigger>
+            <TabsTrigger value="categories" className="shrink-0">Categories</TabsTrigger>
+            <TabsTrigger value="reports" className="shrink-0">Reports</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="mt-4"><DashboardTab expenses={expenses} /></TabsContent>
@@ -647,7 +650,11 @@ function CategoriesTab({ categories }: { categories: ExpenseCategory[] }) {
                     <div className="flex shrink-0 items-center gap-2">
                       <span className="text-xs text-muted-foreground">{c.active ? "Active" : "Inactive"}</span>
                       <span className="-m-3 p-3">
-                        <Switch checked={c.active} onCheckedChange={(v) => handleToggle(c.id, v)} />
+                        <Switch
+                          checked={c.active}
+                          onCheckedChange={(v) => handleToggle(c.id, v)}
+                          aria-label={`${c.active ? "Deactivate" : "Activate"} category ${c.name}`}
+                        />
                       </span>
                       <RenameCategoryButton id={c.id} current={c.name} />
                       {c.custom && (
