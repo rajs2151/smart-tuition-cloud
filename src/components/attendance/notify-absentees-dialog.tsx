@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+import { markAbsenceNotified } from "@/lib/data/adapter";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { logComm, useMessaging } from "@/lib/messaging/store";
 import { fmtDate } from "@/lib/format";
@@ -23,10 +24,7 @@ import type { Batch, Student } from "@/lib/data/types";
  * (wa.me has no batch mode — PRD §0.1/§9). This auto-advances through the
  * absent list instead of leaving the teacher to hunt down each chat
  * manually: one "Send & Next" tap opens the next parent's pre-filled
- * chat, the teacher still taps Send inside WhatsApp themselves. Built as
- * its own one-at-a-time dialog rather than reusing recovery.tsx's
- * stagger-window.open bulk pattern, since that pattern only reliably
- * opens the first tab in most browsers' popup blockers.
+ * chat, the teacher still taps Send inside WhatsApp themselves.
  */
 export function NotifyAbsenteesDialog({
   open,
@@ -35,6 +33,7 @@ export function NotifyAbsenteesDialog({
   sessionDate,
   absentStudents,
   attendanceLanguage,
+  absenceIdByStudentId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -42,6 +41,8 @@ export function NotifyAbsenteesDialog({
   sessionDate: string;
   absentStudents: Student[];
   attendanceLanguage: AttendanceLanguage;
+  /** Maps studentId → attendance_absences.id so we can persist notified_at. */
+  absenceIdByStudentId?: Record<string, string>;
 }) {
   const { templates } = useMessaging();
   const [index, setIndex] = useState(0);
@@ -81,7 +82,7 @@ export function NotifyAbsenteesDialog({
     onOpenChange(v);
   };
 
-  const sendAndNext = () => {
+  const sendAndNext = async () => {
     if (!current || !tpl) return;
     openWhatsApp(mobile, message);
     logComm({
@@ -94,6 +95,14 @@ export function NotifyAbsenteesDialog({
       message,
       sentBy: "attendance",
     });
+    const absenceId = absenceIdByStudentId?.[current.id];
+    if (absenceId) {
+      try {
+        await markAbsenceNotified(absenceId);
+      } catch {
+        /* best-effort — don't block the send flow */
+      }
+    }
     setSentCount((c) => c + 1);
     if (index + 1 >= withNumber.length) {
       toast.success(`Sent ${sentCount + 1} of ${withNumber.length} absence notices.`);

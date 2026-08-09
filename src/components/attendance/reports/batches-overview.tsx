@@ -169,6 +169,47 @@ export function BatchesOverview({
           ))}
         </div>
       </div>
+
+      {studentRows.length > 0 && (
+        <div>
+          <p className="mb-2 text-sm font-medium text-muted-foreground">
+            Students needing attention (&lt;75% · last 30 days)
+          </p>
+          <Card>
+            <CardContent className="divide-y p-0">
+              {studentRows
+                .filter((r) => r.takenSessions > 0 && r.attendancePct < 75)
+                .sort((a, b) => a.attendancePct - b.attendancePct)
+                .slice(0, 20)
+                .map((r) => (
+                  <div
+                    key={`${r.batchName}:${r.studentName}`}
+                    className="flex items-center justify-between gap-3 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{r.studentName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {r.batchName} · {r.absences} absent / {r.takenSessions} sessions
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 font-display text-sm font-bold ${
+                        r.attendancePct < 50 ? "text-destructive" : "text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {r.attendancePct}%
+                    </span>
+                  </div>
+                ))}
+              {studentRows.filter((r) => r.takenSessions > 0 && r.attendancePct < 75).length === 0 && (
+                <p className="p-4 text-center text-sm text-muted-foreground">
+                  All students are at or above 75% attendance.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

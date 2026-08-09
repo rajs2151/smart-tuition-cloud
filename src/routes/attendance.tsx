@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient, useSuspenseQuery, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CalendarCheck, CalendarOff, Ban, MessageCircle, Lock } from "lucide-react";
+import {
+  CalendarCheck, CalendarOff, Ban, MessageCircle, Lock, UserCheck, UserX, Search,
+} from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,6 +26,7 @@ import { NotifyTab } from "@/components/attendance/notify-tab";
 import { BatchesOverview } from "@/components/attendance/reports/batches-overview";
 import { BatchDayList } from "@/components/attendance/reports/batch-day-list";
 import { DayNotifyList } from "@/components/attendance/reports/day-notify-list";
+import { buildConsecutiveAbsenceMap } from "@/components/attendance/consecutive-absences";
 
 import {
   listBatches,
@@ -31,6 +34,9 @@ import {
   loadAttendanceForBatch,
   markAttendanceStatus,
   saveAttendance,
+  listAttendanceSessions,
+  listAttendanceAbsences,
+  listSessionAbsences,
 } from "@/lib/data/adapter";
 import { useSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/roles";
@@ -60,6 +66,12 @@ export const Route = createFileRoute("/attendance")({
   loader: ({ context }) => context.queryClient.ensureQueryData(pageQuery),
   component: AttendancePage,
 });
+
+function daysAgoISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 function AttendancePage() {
   const { data } = useSuspenseQuery(pageQuery);
@@ -119,10 +131,10 @@ function AttendancePage() {
           </Card>
         ) : (
           <Tabs defaultValue="mark" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="mark">Take Attendance</TabsTrigger>
-              <TabsTrigger value="reports">Reports</TabsTrigger>
-              <TabsTrigger value="notify">Notify</TabsTrigger>
+            <TabsList className="flex h-auto w-full flex-nowrap justify-start overflow-x-auto">
+              <TabsTrigger value="mark" className="shrink-0">Take Attendance</TabsTrigger>
+              <TabsTrigger value="reports" className="shrink-0">Reports</TabsTrigger>
+              <TabsTrigger value="notify" className="shrink-0">Notify</TabsTrigger>
             </TabsList>
             <TabsContent value="mark">
               {batch && <MarkAttendanceTab batch={batch} allStudents={data.students} />}
@@ -165,6 +177,34 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
     queryFn: () => loadAttendanceForBatch(batch.id, sessionDate),
   });
 
+  // Last 14 days of history for consecutive-absence badges (Teachmint-style streak).
+  const historyFrom = useMemo(() => daysAgoISO(14), []);
+  const historySessionsQuery = useQuery({
+    queryKey: ["attendance-streak-sessions", batch.id, historyFrom, sessionDate],
+    queryFn: () => listAttendanceSessions(historyFrom, sessionDate, batch.id),
+  });
+  const historyAbsencesQuery = useQuery({
+    queryKey: ["attendance-streak-absences", batch.id, historyFrom, sessionDate],
+    queryFn: () => listAttendanceAbsences(historyFrom, sessionDate, batch.id),
+  });
+
+  const consecutiveAbsences = useMemo(() => {
+    const sessions = (historySessionsQuery.data ?? [])
+      .filter((s) => s.status === "taken")
+      .sort((a, b) => b.sessionDate.localeCompare(a.sessionDate));
+    const bySession = new Map<string, Set<string>>();
+    for (const a of historyAbsencesQuery.data ?? []) {
+      if (!bySession.has(a.sessionId)) bySession.set(a.sessionId, new Set());
+      bySession.get(a.sessionId)!.add(a.studentId);
+    }
+    return buildConsecutiveAbsenceMap(
+      students.map((s) => s.id),
+      sessionDate,
+      sessions,
+      bySession,
+    );
+  }, [historySessionsQuery.data, historyAbsencesQuery.data, students, sessionDate]);
+
   const [absentIds, setAbsentIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (attendanceQuery.data) setAbsentIds(new Set(attendanceQuery.data.absentStudentIds));
@@ -173,6 +213,7 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
   const [saving, setSaving] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   const [lastAbsentStudents, setLastAbsentStudents] = useState<typeof students>([]);
+  const [absenceIdByStudent, setAbsenceIdByStudent] = useState<Record<string, string>>({});
 
   const existingSession = attendanceQuery.data?.session ?? null;
   const locked =
@@ -192,13 +233,39 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
     });
   };
 
+  const markAllPresent = () => {
+    if (locked) return;
+    setAbsentIds(new Set());
+  };
+  const markAllAbsent = () => {
+    if (locked) return;
+    setAbsentIds(new Set(students.map((s) => s.id)));
+  };
+
   const save = async () => {
     setSaving(true);
     try {
-      await saveAttendance(batch, sessionDate, [...absentIds]);
+      const session = await saveAttendance(batch, sessionDate, [...absentIds]);
       await qc.invalidateQueries({ queryKey: ["attendance", batch.id, sessionDate] });
+      await qc.invalidateQueries({ queryKey: ["attendance-streak-sessions", batch.id] });
+      await qc.invalidateQueries({ queryKey: ["attendance-streak-absences", batch.id] });
       const absentStudents = students.filter((s) => absentIds.has(s.id));
       setLastAbsentStudents(absentStudents);
+
+      // Resolve absence row IDs so NotifyAbsenteesDialog can write notified_at.
+      if (absentStudents.length > 0 && session?.id) {
+        try {
+          const rows = await listSessionAbsences(session.id);
+          const map: Record<string, string> = {};
+          for (const r of rows) map[r.studentId] = r.id;
+          setAbsenceIdByStudent(map);
+        } catch {
+          setAbsenceIdByStudent({});
+        }
+      } else {
+        setAbsenceIdByStudent({});
+      }
+
       if (absentStudents.length > 0) {
         toast.success(`Attendance saved · ${absentStudents.length} absent`, {
           action: {
@@ -248,7 +315,8 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
             <div>
               <p className="font-display font-bold leading-tight">{batch.name}</p>
               <p className="text-xs text-muted-foreground">
-                {students.length} students · {absentIds.size} marked absent
+                {students.length} students · {absentIds.size} marked absent ·{" "}
+                {students.length - absentIds.size} present
               </p>
             </div>
             {statusBadge()}
@@ -299,12 +367,27 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
         </Card>
       ) : (
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="space-y-3 p-4">
+            {!locked && students.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={markAllPresent}>
+                  <UserCheck className="h-3.5 w-3.5" /> All present
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={markAllAbsent}>
+                  <UserX className="h-3.5 w-3.5" /> All absent
+                </Button>
+                <p className="flex items-center text-[11px] text-muted-foreground sm:ml-2">
+                  <Search className="mr-1 h-3 w-3" />
+                  Tap a student to toggle · amber badge = consecutive prior absences
+                </p>
+              </div>
+            )}
             <AttendanceGrid
               students={students}
               absentIds={absentIds}
               onToggle={toggle}
               disabled={locked}
+              consecutiveAbsences={consecutiveAbsences}
             />
           </CardContent>
         </Card>
@@ -347,6 +430,7 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
         sessionDate={sessionDate}
         absentStudents={lastAbsentStudents}
         attendanceLanguage={attendanceSettings.language}
+        absenceIdByStudentId={absenceIdByStudent}
       />
     </div>
   );
