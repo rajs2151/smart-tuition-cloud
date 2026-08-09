@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getSession } from "@/lib/auth/session";
 import { getSettings } from "@/lib/settings/store";
@@ -39,41 +38,18 @@ export type RecycleItem = {
   payload?: unknown; // snapshot for full restore (optional)
 };
 
-const KEY = "vidyafee.audit.v1";
-
-type State = { logs: AuditLog[]; recycle: RecycleItem[] };
-
-function load(): State {
-  if (typeof window === "undefined") return { logs: [], recycle: [] };
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as State) : { logs: [], recycle: [] };
-  } catch { return { logs: [], recycle: [] }; }
-}
-
-let state: State = load();
-const listeners = new Set<() => void>();
-function persist() {
-  if (typeof window === "undefined") return;
-  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* ignore */ }
-}
-function emit() { listeners.forEach((l) => l()); }
-function set(next: State) { state = next; persist(); emit(); }
-
+/**
+ * Writes durable audit rows to Supabase only.
+ * Previously also mirrored into `vidyafee.audit.v1` localStorage — that
+ * caused Recycle Bin / Audit Log to look empty on other devices. Soft-
+ * deleted rows and `audit_logs` are the source of truth now.
+ */
 export function logAudit(input: Omit<AuditLog, "id" | "at">) {
-  const log: AuditLog = {
-    ...input,
-    id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    at: new Date().toISOString(),
-  };
-  set({ ...state, logs: [log, ...state.logs].slice(0, 1000) });
-
-  // Best-effort write-through to the real `audit_logs` table so the entry
-  // is durable and shared across devices/staff, not just this browser's
-  // localStorage. Fire-and-forget: a failed audit write must never block
-  // or fail the action being audited.
   const instituteId = getSession().instituteId ?? getSettings().institute.id ?? null;
   if (!instituteId) return;
+
+  // Fire-and-forget: a failed audit write must never block or fail the
+  // action being audited.
   supabase
     .from("audit_logs")
     .insert({
@@ -91,28 +67,12 @@ export function logAudit(input: Omit<AuditLog, "id" | "at">) {
     });
 }
 
-export function addRecycle(item: Omit<RecycleItem, "id">) {
-  const id = `${item.entity}:${item.entityId}`;
-  set({
-    ...state,
-    recycle: [{ id, ...item }, ...state.recycle.filter((r) => r.id !== id)],
-  });
+/** @deprecated No-op — Recycle Bin reads soft-deleted rows from Supabase. */
+export function addRecycle(_item: Omit<RecycleItem, "id">) {
+  /* intentionally empty */
 }
 
-export function removeRecycle(entity: AuditEntity, entityId: string) {
-  set({
-    ...state,
-    recycle: state.recycle.filter((r) => !(r.entity === entity && r.entityId === entityId)),
-  });
-}
-
-export function listLogs() { return state.logs; }
-export function listRecycle() { return state.recycle; }
-
-export function useAudit(): State {
-  return useSyncExternalStore(
-    (cb) => { listeners.add(cb); return () => listeners.delete(cb); },
-    () => state,
-    () => state,
-  );
+/** @deprecated No-op — restore/purge clear `deleted` flags in Supabase. */
+export function removeRecycle(_entity: AuditEntity, _entityId: string) {
+  /* intentionally empty */
 }

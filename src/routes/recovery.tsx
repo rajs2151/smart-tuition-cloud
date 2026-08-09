@@ -81,20 +81,29 @@ function RecoveryPage() {
 
   const rows: Row[] = useMemo(() => {
     const today = Date.now();
+    // Derive Collected from the payments ledger (already loaded on this
+    // page), not student.paidFee — that column can drift if the
+    // post-payment reconcile step fails.
+    const collectedByStudent = new Map<string, number>();
+    for (const p of data.payments) {
+      if (p.voided) continue;
+      collectedByStudent.set(p.studentId, (collectedByStudent.get(p.studentId) ?? 0) + p.amount);
+    }
     return data.students
       .map((s) => {
         const billed = Math.max(0, s.totalFee - s.discount);
-        const pending = Math.max(0, billed - s.paidFee);
+        const paid = collectedByStudent.get(s.id) ?? 0;
+        const pending = Math.max(0, billed - paid);
         const pct = billed > 0 ? pending / billed : 0;
         const lastPay = data.payments
-          .filter((p) => p.studentId === s.id)
+          .filter((p) => p.studentId === s.id && !p.voided)
           .sort((a, b) => b.date.localeCompare(a.date))[0];
         const daysSince = lastPay
           ? Math.floor((today - new Date(lastPay.date).getTime()) / 86400000)
           : 9999;
         const priority: Priority = pct > 0.5 ? "high" : pct >= 0.25 ? "medium" : "low";
         const batch = data.batches.find((b) => b.id === s.batchId);
-        return { ...s, billed, pending, pct, daysSince, priority, batch, mobile: pickMobile(s) };
+        return { ...s, paidFee: paid, billed, pending, pct, daysSince, priority, batch, mobile: pickMobile(s) };
       })
       .filter((r) => r.pending > 0);
   }, [data]);
