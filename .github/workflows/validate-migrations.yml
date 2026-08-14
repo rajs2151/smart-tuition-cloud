@@ -1,0 +1,95 @@
+name: Validate Supabase migrations
+
+# Runs supabase/migrations/*.sql, in order, against a real local Supabase
+# stack (full Postgres + auth schema via Docker, not a bare Postgres
+# container) — the same thing `supabase db push` would do against a real
+# project, but disposable and safe to run on every PR.
+#
+# Deliberately does NOT run supabase/seed.sql as part of this check: that
+# file requires two real auth.users UUIDs to be substituted in first (see
+# its own header comment for why), so it intentionally fails fast on a
+# fresh database with no users yet. That's correct behavior for the seed
+# script and not something this workflow should try to work around — this
+# workflow's job is strictly "do the migrations themselves apply cleanly?"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - ".github/workflows/validate-migrations.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - ".github/workflows/validate-migrations.yml"
+  workflow_dispatch: {}
+
+jobs:
+  validate-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: latest
+
+      - name: Temporarily set seed.sql aside
+        run: |
+          if [ -f supabase/seed.sql ]; then
+            mv supabase/seed.sql supabase/seed.sql.bak
+          fi
+
+      - name: Start local Supabase stack (applies every migration in order)
+        run: supabase start
+
+      - name: Ensure psql is available
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+
+      - name: Confirm every expected table exists
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 <<'SQL'
+            do $$
+            declare
+              missing text[];
+            begin
+              select array_agg(t) into missing
+              from unnest(array[
+                'institutes', 'institute_members', 'batches',
+                'students', 'payments', 'receipts', 'audit_logs',
+                'attendance_sessions', 'attendance_absences',
+                'expenses', 'expense_categories',
+                'message_templates', 'message_template_defaults', 'comm_logs'
+              ]) as t
+              where not exists (
+                select 1 from information_schema.tables
+                where table_schema = 'public' and table_name = t
+              );
+
+              if missing is not null then
+                raise exception 'Missing expected table(s) after migrations: %', missing;
+              end if;
+
+              raise notice 'All expected tables present.';
+            end $$;
+          SQL
+
+      - name: Restore seed.sql
+        if: always()
+        run: |
+          if [ -f supabase/seed.sql.bak ]; then
+            mv supabase/seed.sql.bak supabase/seed.sql
+          fi
+
+      - name: Stop local Supabase stack
+        if: always()
+        run: supabase stop --no-backup

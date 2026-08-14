@@ -17,11 +17,10 @@ export function buildContext(opts: {
   const { institute } = getSettings();
   const { student, batch, payment, pending, dueDate, extras } = opts;
   const billed = student ? student.totalFee - student.discount : 0;
-  const pendingAmt = pending ?? (student ? Math.max(0, billed - student.paidFee) : 0);
-  // PaidAmount for a receipt acknowledgement should prefer the payment
-  // row's amount. The student.paidFee fallback is a last resort only —
-  // callers that care about accuracy should pass `pending` (and ideally
-  // a ledger-derived paid total via extras.PaidAmount).
+  // Never read student.paidFee — that column is a best-effort cache and
+  // can drift from the payments ledger. Callers must pass `pending` and
+  // PaidAmount (via payment.amount or extras.PaidAmount).
+  const pendingAmt = pending ?? 0;
   return {
     InstituteName: institute.name,
     InstituteContact: institute.phone,
@@ -32,7 +31,7 @@ export function buildContext(opts: {
     Board: student?.board ?? batch?.board ?? "",
     Medium: student?.medium ?? batch?.medium ?? "",
     TotalFee: billed,
-    PaidAmount: payment?.amount ?? extras?.PaidAmount ?? student?.paidFee ?? 0,
+    PaidAmount: payment?.amount ?? extras?.PaidAmount ?? 0,
     PendingAmount: pendingAmt,
     ReceiptNumber: payment?.receiptNo ?? "",
     PaymentDate: payment?.date ? fmtDate(payment.date) : fmtDate(new Date().toISOString()),

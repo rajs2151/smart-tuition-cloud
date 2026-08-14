@@ -38,13 +38,13 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
     if (!student) return;
     const { templates, defaults } = getMessaging();
     const billed = student.totalFee - student.discount;
-    // Ledger-derived paid total — do not trust student.paidFee cache.
     let paid = 0;
     try {
       const ledger = await listPaymentsByStudent(student.id);
       paid = ledger.filter((p) => !p.voided).reduce((sum, p) => sum + p.amount, 0);
     } catch {
-      paid = student.paidFee;
+      toast.error("Could not load payment history for this receipt");
+      return;
     }
     const pending = Math.max(0, billed - paid);
     const subType = pending === 0 ? "full" : payment.type === "admission" ? "admission" : "partial";
@@ -57,8 +57,8 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
     if (!tpl) return toast.error("Configure an acknowledgement template in Settings");
     const msg = renderMessage(tpl, buildContext({ student, payment, pending }));
     openWhatsApp(mobile, msg);
-    logComm({ studentId: student.id, studentName: student.name, mobile, templateId: tpl.id, templateName: tpl.name, category: "acknowledgement", message: msg, sentBy: "owner" });
-    markLogPaid(student.id);
+    void logComm({ studentId: student.id, studentName: student.name, mobile, templateId: tpl.id, templateName: tpl.name, category: "acknowledgement", message: msg, sentBy: "owner" });
+    void markLogPaid(student.id);
     toast.success("WhatsApp receipt opened");
   };
 

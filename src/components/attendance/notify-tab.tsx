@@ -102,13 +102,14 @@ export function NotifyTab({
       buildContext({
         student: row.student,
         batch: row.batch,
+        pending: 0,
         extras: { AttendanceDate: fmtDate(today) },
       }),
     );
     setSendingId(row.absence.id);
     try {
       openWhatsApp(mobile, message);
-      logComm({
+      await logComm({
         studentId: row.student.id,
         studentName: row.student.name,
         mobile,

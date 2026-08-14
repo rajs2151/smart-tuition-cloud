@@ -28,15 +28,19 @@ import {
   restoreDefaults,
   setDefaultTemplate,
   upsertTemplate,
-  useMessaging,
+  useInvalidateMessaging,
+  useMessagingQuery,
 } from "@/lib/messaging/store";
 import { renderTemplate, buildContext } from "@/lib/messaging/whatsapp";
 import { useSettings } from "@/lib/settings/store";
 
 export function TemplatesTab() {
-  const { templates, defaults } = useMessaging();
+  const q = useMessagingQuery();
+  const invalidate = useInvalidateMessaging();
+  const templates = useMemo(() => q.data?.templates ?? [], [q.data?.templates]);
+  const defaults = q.data?.defaults;
   const { institute } = useSettings();
-  const [selectedId, setSelectedId] = useState<string>(templates[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState<string>("");
   const selected = templates.find((t) => t.id === selectedId) ?? templates[0];
 
   const grouped = useMemo(() => {
@@ -47,17 +51,34 @@ export function TemplatesTab() {
     return map;
   }, [templates]);
 
-  const newTemplate = (category: TemplateCategory) => {
+  const newTemplate = async (category: TemplateCategory) => {
     const t: MessageTemplate = {
-      id: `tpl_${Date.now()}`,
+      id: "",
       name: "New Template",
       category,
       language: "English",
       content: "Dear {{ParentName}},\n\n...\n\nRegards,\n{{InstituteName}}",
     };
-    upsertTemplate(t);
-    setSelectedId(t.id);
+    try {
+      const saved = await upsertTemplate(t);
+      await invalidate();
+      setSelectedId(saved.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not create template");
+    }
   };
+
+  if (q.isLoading) {
+    return <p className="text-sm text-muted-foreground">Loading templates…</p>;
+  }
+  if (q.error) {
+    return (
+      <p className="text-sm text-destructive">
+        Could not load templates: {q.error instanceof Error ? q.error.message : "Unknown error"}
+      </p>
+    );
+  }
+  if (!defaults) return null;
 
   return (
     <div className="space-y-4">
@@ -69,7 +90,19 @@ export function TemplatesTab() {
               These will be auto-selected for one-click reminders and acknowledgements.
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => { restoreDefaults(); toast.success("Built-in templates restored"); }}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              try {
+                await restoreDefaults();
+                await invalidate();
+                toast.success("Built-in templates restored");
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Could not restore defaults");
+              }
+            }}
+          >
             <RotateCcw className="h-4 w-4" /> Restore defaults
           </Button>
         </CardHeader>
@@ -77,7 +110,17 @@ export function TemplatesTab() {
           {(["reminder", "acknowledgement", "admission", "attendance"] as const).map((cat) => (
             <div key={cat} className="space-y-1.5">
               <Label className="text-xs">{CATEGORY_LABELS[cat]}</Label>
-              <Select value={defaults[cat]} onValueChange={(v) => setDefaultTemplate(cat, v)}>
+              <Select
+                value={defaults[cat]}
+                onValueChange={async (v) => {
+                  try {
+                    await setDefaultTemplate(cat, v);
+                    await invalidate();
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Could not set default");
+                  }
+                }}
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {grouped[cat].map((t) => (
@@ -122,7 +165,14 @@ export function TemplatesTab() {
           </CardContent>
         </Card>
 
-        {selected && <TemplateEditor key={selected.id} template={selected} instituteName={institute.name} />}
+        {selected && (
+          <TemplateEditor
+            key={selected.id}
+            template={selected}
+            instituteName={institute.name}
+            onMutated={invalidate}
+          />
+        )}
       </div>
     </div>
   );
@@ -131,9 +181,11 @@ export function TemplatesTab() {
 function TemplateEditor({
   template,
   instituteName,
+  onMutated,
 }: {
   template: MessageTemplate;
   instituteName: string;
+  onMutated: () => void | Promise<unknown>;
 }) {
   const [form, setForm] = useState<MessageTemplate>(template);
   const preview = useMemo(
@@ -156,11 +208,24 @@ function TemplateEditor({
   const insertVar = (v: string) => {
     setForm((f) => ({ ...f, content: `${f.content}{{${v}}}` }));
   };
-  const save = () => { upsertTemplate(form); toast.success("Template saved"); };
-  const del = () => {
+  const save = async () => {
+    try {
+      await upsertTemplate(form);
+      await onMutated();
+      toast.success("Template saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save template");
+    }
+  };
+  const del = async () => {
     if (form.builtIn) return toast.error("Built-in templates can't be deleted. Edit or restore defaults instead.");
-    deleteTemplate(form.id);
-    toast.success("Template deleted");
+    try {
+      await deleteTemplate(form.id);
+      await onMutated();
+      toast.success("Template deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete template");
+    }
   };
 
   return (

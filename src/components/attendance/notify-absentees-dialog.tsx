@@ -66,6 +66,7 @@ export function NotifyAbsenteesDialog({
           buildContext({
             student: current,
             batch,
+            pending: 0,
             extras: { AttendanceDate: fmtDate(sessionDate) },
           }),
         )
@@ -84,7 +85,7 @@ export function NotifyAbsenteesDialog({
   const sendAndNext = () => {
     if (!current || !tpl) return;
     openWhatsApp(mobile, message);
-    logComm({
+    void logComm({
       studentId: current.id,
       studentName: current.name,
       mobile,

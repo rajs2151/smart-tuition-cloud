@@ -62,13 +62,13 @@ function ReceiptDetail() {
   });
   const { institute, receipt: cfg } = useSettings();
   const { payment, student, batch, totalPaid } = data;
+  const receiptRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
   if (!student) return null;
 
   const contact = getEffectiveReceiptContact(institute, cfg);
   const billed = student.totalFee - student.discount;
   const balance = Math.max(0, billed - totalPaid);
-  const receiptRef = useRef<HTMLDivElement>(null);
-  const [downloading, setDownloading] = useState(false);
 
   const onDownload = async () => {
     if (!receiptRef.current) return;
@@ -94,7 +94,7 @@ function ReceiptDetail() {
       toast.error("No message template configured.");
       return;
     }
-    const msg = renderMessage(tpl, buildContext({ student, batch, payment }));
+    const msg = renderMessage(tpl, buildContext({ student, batch, payment, pending: balance, extras: { PaidAmount: payment.amount } }));
     openWhatsApp(mobile, msg);
   };
 

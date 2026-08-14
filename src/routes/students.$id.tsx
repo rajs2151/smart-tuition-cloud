@@ -117,7 +117,7 @@ function StudentDetail() {
       toast.error("No message template configured.");
       return;
     }
-    const msg = renderMessage(tpl, buildContext({ student: s, batch, pending: due }));
+    const msg = renderMessage(tpl, buildContext({ student: s, batch, pending: due, extras: { PaidAmount: collected } }));
     openWhatsApp(mobile, msg);
   };
 

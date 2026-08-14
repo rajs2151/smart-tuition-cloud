@@ -15,6 +15,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthGate } from "@/components/auth-gate";
+import { useMessaging } from "@/lib/messaging/store";
 
 function NotFoundComponent() {
   return (
@@ -143,10 +144,16 @@ function RootComponent() {
   );
 }
 
+function MessagingPrefetch() {
+  useMessaging();
+  return null;
+}
+
 function AppShell() {
   return (
     <>
       <AuthGate>
+        <MessagingPrefetch />
         <SidebarProvider>
           <div className="flex min-h-screen w-full bg-background">
             <AppSidebar />

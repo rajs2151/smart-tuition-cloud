@@ -505,6 +505,158 @@ export type Database = {
         }
         Relationships: []
       }
+      comm_logs: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          institute_id: string
+          message: string
+          mobile: string
+          payment_received_after: boolean
+          sent_by: string
+          student_id: string | null
+          student_name: string
+          template_id: string | null
+          template_name: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          institute_id: string
+          message: string
+          mobile?: string
+          payment_received_after?: boolean
+          sent_by?: string
+          student_id?: string | null
+          student_name: string
+          template_id?: string | null
+          template_name: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          institute_id?: string
+          message?: string
+          mobile?: string
+          payment_received_after?: boolean
+          sent_by?: string
+          student_id?: string | null
+          student_name?: string
+          template_id?: string | null
+          template_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comm_logs_institute_id_fkey"
+            columns: ["institute_id"]
+            isOneToOne: false
+            referencedRelation: "institutes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comm_logs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_template_defaults: {
+        Row: {
+          category: string
+          institute_id: string
+          template_id: string
+        }
+        Insert: {
+          category: string
+          institute_id: string
+          template_id: string
+        }
+        Update: {
+          category?: string
+          institute_id?: string
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_template_defaults_institute_id_fkey"
+            columns: ["institute_id"]
+            isOneToOne: false
+            referencedRelation: "institutes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_template_defaults_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "message_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      message_templates: {
+        Row: {
+          built_in: boolean
+          category: string
+          content: string
+          created_at: string
+          deleted: boolean
+          deleted_at: string | null
+          deleted_by: string | null
+          id: string
+          institute_id: string
+          language: string
+          name: string
+          slug: string | null
+          sub_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          built_in?: boolean
+          category: string
+          content: string
+          created_at?: string
+          deleted?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          institute_id: string
+          language?: string
+          name: string
+          slug?: string | null
+          sub_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          built_in?: boolean
+          category?: string
+          content?: string
+          created_at?: string
+          deleted?: boolean
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          institute_id?: string
+          language?: string
+          name?: string
+          slug?: string | null
+          sub_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_templates_institute_id_fkey"
+            columns: ["institute_id"]
+            isOneToOne: false
+            referencedRelation: "institutes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number

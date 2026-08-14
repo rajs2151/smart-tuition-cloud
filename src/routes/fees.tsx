@@ -15,7 +15,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { listPayments, listStudents } from "@/lib/data/adapter";
 import { fmtDate, initials, inr, todayLocalISO } from "@/lib/format";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
-import { getMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
+import { getMessaging, logComm } from "@/lib/messaging/store";
 import { PaymentRowMenu } from "@/components/payment-row-menu";
 import { RecordPaymentDialog } from "@/components/record-payment-dialog";
 
@@ -159,9 +159,9 @@ function FeesPage() {
                         const mobile = pickMobile(s);
                         if (!mobile) return toast.error("No mobile on file");
                         if (!tpl) return toast.error("Configure a reminder template in Settings");
-                        const msg = renderMessage(tpl, buildContext({ student: s, pending: s.due }));
+                        const msg = renderMessage(tpl, buildContext({ student: s, pending: s.due, extras: { PaidAmount: s.paidFee } }));
                         openWhatsApp(mobile, msg);
-                        logComm({ studentId: s.id, studentName: s.name, mobile, templateId: tpl.id, templateName: tpl.name, category: "reminder", message: msg, sentBy: "owner" });
+                        void logComm({ studentId: s.id, studentName: s.name, mobile, templateId: tpl.id, templateName: tpl.name, category: "reminder", message: msg, sentBy: "owner" });
                         toast.success("WhatsApp reminder opened");
                       }}
                     >

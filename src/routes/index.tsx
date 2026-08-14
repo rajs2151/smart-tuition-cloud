@@ -182,7 +182,7 @@ function Dashboard() {
     }
     const msg = renderMessage(
       tpl,
-      buildContext({ student: st, batch, pending: amount, dueDate }),
+      buildContext({ student: st, batch, pending: amount, dueDate, extras: { PaidAmount: collectedFor(st.id) } }),
     );
     openWhatsApp(mobile, msg);
   };

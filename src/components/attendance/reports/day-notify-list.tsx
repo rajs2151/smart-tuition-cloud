@@ -78,13 +78,14 @@ export function DayNotifyList({
       buildContext({
         student: row.student,
         batch,
+        pending: 0,
         extras: { AttendanceDate: fmtDate(session.sessionDate) },
       }),
     );
     setSendingId(row.absence.id);
     try {
       openWhatsApp(mobile, message);
-      logComm({
+      await logComm({
         studentId: row.student.id,
         studentName: row.student.name,
         mobile,
