@@ -337,7 +337,7 @@ function RecoveryRow({ row }: { row: Row }) {
     if (!tpl) { toast.error("Configure a default reminder template in Settings"); return; }
     const msg = renderMessage(tpl, buildContext({ student: row, batch: row.batch, pending: row.pending }));
     openWhatsApp(row.mobile, msg);
-    logComm({
+    void logComm({
       studentId: row.id, studentName: row.name, mobile: row.mobile,
       templateId: tpl.id, templateName: tpl.name, category: "reminder",
       message: msg, sentBy: "owner",
@@ -417,7 +417,7 @@ function CustomMessageDialog({ row }: { row: Row }) {
   const send = () => {
     if (!row.mobile) return toast.error("No mobile on file");
     openWhatsApp(row.mobile, msg);
-    logComm({
+    void logComm({
       studentId: row.id, studentName: row.name, mobile: row.mobile,
       templateId: tpl?.id ?? "custom", templateName: tpl?.name ?? "Custom",
       category: "reminder", message: msg, sentBy: "owner",
@@ -503,7 +503,7 @@ function BulkReminderDialog({ rows }: { rows: Row[] }) {
       const m = renderMessage(tpl, buildContext({ student: r, batch: r.batch, pending: r.pending }));
       // stagger window.open to avoid pop-up blocker (only first one will actually open in most browsers)
       setTimeout(() => openWhatsApp(r.mobile, m), i * 250);
-      logComm({
+      void logComm({
         studentId: r.id, studentName: r.name, mobile: r.mobile,
         templateId: tpl.id, templateName: tpl.name, category: "reminder",
         message: m, sentBy: "owner (bulk)",

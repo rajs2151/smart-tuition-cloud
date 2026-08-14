@@ -87,7 +87,7 @@ calling this fully closed end-to-end.
 ## Add Expense Mobile Zoom Bug
 
 Status:
-Fix in progress (2026-08-09 audit) — needs phone confirmation
+Fix on main (2026-08-09) — still needs a real phone confirmation
 
 Issue:
 Reported: Expenses on mobile leaves the page zoomed out/misaligned,
@@ -105,9 +105,9 @@ Root causes identified in audit (stacked, not mutually exclusive):
 3. **`Input` `file:text-sm` (14px)** on the attachment field — same class
    of sub-16px violation as (2).
 
-Fixes applied this session: scrollable Expenses tabs; `text-base
-md:text-sm` on `SelectTrigger`; `file:text-base md:file:text-sm` on
-`Input`. Still needs a real phone confirmation before closing.
+Fixes confirmed on `main`: scrollable Expenses tabs (`overflow-x-auto`);
+`text-base md:text-sm` on `SelectTrigger`; `file:text-base md:file:text-sm`
+on `Input`. Still needs a real phone confirmation before closing.
 
 ---
 
@@ -174,16 +174,16 @@ until now. Tracking it here for real this time; see `ROADMAP.md`.
 ## CI Migration-Validation Workflow
 
 Status:
-Pending
+Restored on `fix/known-issues-open` — pending merge to `main`
 
 Issue:
-`.github/workflows/validate-migrations.yml` exists locally and is written
-to spin up a real local Supabase stack and apply every migration against
-it, but hasn't been pushed to `main` — the GitHub token used in this
-session lacked the `workflow` scope/permission GitHub requires specifically
-for pushing changes under `.github/workflows/`. Needs a token with that
-scope (classic PAT: check `workflow`; fine-grained PAT: add "Workflows:
-Read and write" permission) to land.
+The file was added in `2cbbe90` then **deleted** in `bc3b3c4` because the
+session token lacked GitHub `workflow` scope. `KNOWN_ISSUES.md` previously
+claimed it "exists locally"; as of 2026-08-14 it was on neither disk nor
+`origin/main`. Restored as `.github/workflows/validate-migrations.yml`
+with the table-existence check updated for attendance, expenses, and
+messaging tables. Landing on a feature branch so you can merge with a
+token that allows `.github/workflows/` if GitHub still requires it.
 
 ---
 
@@ -262,36 +262,39 @@ pass, not a quick fix.
 ## Pending Migrations Not Yet Applied to Production
 
 Status:
-Resolved
+Messaging migration pending apply (`20260814000000_message_templates_and_comm_logs.sql`)
 
 Notes:
-All 15 migrations currently on `main` (up through
+All 15 migrations on `main` (up through
 `20260731000000_expenses_system.sql`) are confirmed applied to the live
-Supabase project — the Session 4 features (Attendance, Expenses) are
-working end-to-end against real data, which wouldn't be possible
-otherwise. See `docs/HANDOVER.md`'s Database architecture section for one
-remaining gap: a `REVOKE EXECUTE` hardening fix that's confirmed already
-applied live but not yet committed as a migration file (sitting in the
-still-open PR #10).
+Supabase project. The messaging tables migration is on
+`fix/known-issues-open` and must be applied with `supabase db push`
+after merge (or from this branch) — verify
+`information_schema.role_table_grants` for `authenticated` vs `anon` /
+`PUBLIC` rather than trusting the SQL file. No live student/institute
+rows are mutated by that migration.
 
 ---
 
 ## `student.paidFee` Still Read Directly In Three Places
 
 Status:
-Fixed on recovery + payment-row-menu (2026-08-09); whatsapp `buildContext`
-documents the fallback
+Fixed (2026-08-14) — `buildContext` no longer reads `student.paidFee`
 
 Issue:
-Session 3 found and fixed a recurring bug where several screens read
-`student.paidFee` (a column reconciled by a best-effort background step)
-instead of deriving Collected live from the payments ledger. The last
-call sites were: WhatsApp acknowledgement pending-amount logic
-(`src/components/payment-row-menu.tsx`, `src/lib/messaging/whatsapp.ts`)
-and the recovery/reminders page (`src/routes/recovery.tsx`). Recovery and
-PaymentRowMenu now derive paid totals from the payments ledger.
-`buildContext` still falls back to `student.paidFee` only when the caller
-does not pass `pending` / payment — prefer passing ledger values.
+Session 3 found a recurring bug where screens read `student.paidFee`
+(a column reconciled by a best-effort background step) instead of
+deriving Collected from the payments ledger. Recovery/fees/dashboard
+already overwrote the field from the ledger for display.
+
+Remaining cache reads were in `buildContext` (`pending` / `PaidAmount`
+fallbacks) and `payment-row-menu.tsx` (ledger `catch` fell back to
+`student.paidFee`). `buildContext` now requires callers to pass
+`pending` and PaidAmount (`payment.amount` or `extras.PaidAmount`).
+Receipt WhatsApp passes ledger `balance` + this payment's amount.
+Payment-row-menu toasts and aborts if the ledger fetch fails instead of
+lying with the cache. `students.paid_fee` is still written by
+`reconcileStudentPaid` for storage; it is not used for WhatsApp math.
 
 ---
 
@@ -348,16 +351,20 @@ the full writeup.
 ## Messaging Templates Still `localStorage`-Only
 
 Status:
-Open — P0 data-residency risk (reconfirmed 2026-08-09)
+Fixed in code (2026-08-14) — migration `20260814000000_message_templates_and_comm_logs.sql`
+must be applied to production before the UI works (`supabase db push`).
+Verify grants via `information_schema` after apply, not from the SQL file.
 
 Issue:
-`src/lib/messaging/store.ts` persists templates, default selection, and
-comm logs (`vidyafee.messaging.v1`) to browser `localStorage`, not
-Supabase — same category of risk that caused the Expenses data-loss
-incident. Templates/edits and WhatsApp send history do not sync across
-devices or staff members. Needs a Supabase-backed migration
-(`message_templates` + `comm_logs` or equivalent) with one-time local →
-server import.
+`src/lib/messaging/store.ts` persisted templates, defaults, and comm logs
+(`vidyafee.messaging.v1`) to browser `localStorage`. Replaced with
+`message_templates` (soft-delete, per-institute built-in seed),
+`message_template_defaults`, and `comm_logs`, same `is_member()` RLS /
+`GRANT … TO authenticated` / `REVOKE … FROM PUBLIC, anon` convention as
+expenses. Client loads via React Query. One-time **INSERT-only** import
+of custom (non-built-in) localStorage templates; built-in local edits are
+not migrated (that would UPDATE seeded rows). Built-ins themselves come
+from the SQL seed/backfill.
 
 ---
 
@@ -387,8 +394,8 @@ Catalogued — action per item below
 | --- | --- | --- |
 | Auth session | `integrations/supabase/client.ts` → `localStorage` | Acceptable — Supabase Auth must persist JWT refresh tokens client-side |
 | Theme preference | `components/theme-toggle.tsx` | Acceptable — UI preference only, not business data |
-| Messaging templates + logs | `lib/messaging/store.ts` | **Not OK** — migrate to Supabase (see above) |
-| Audit + recycle mirror | `lib/audit/store.ts` | **Not OK** — stop relying on local mirror; read `audit_logs` + soft-deleted rows |
+| Messaging templates + logs | `lib/messaging/store.ts` | **Fixed** — Supabase `message_templates` / `comm_logs` (see above); apply migration before use |
+| Audit + recycle mirror | `lib/audit/store.ts` | **Fixed** — Recycle Bin + Audit Log read Supabase; `logAudit` writes `audit_logs` only |
 | React Query cache | in-memory (`staleTime: 30s`) | Acceptable — not durable device storage |
 | Institute logo as data URL | Settings upload → `institutes.logo_url` | **Risk** — base64 in Postgres inflates free-tier 500 MB DB; prefer Supabase Storage |
 | Expense "attachment" | name only in `expenses.attachment_name` | **Gap** — file never uploaded; only filename string saved |
