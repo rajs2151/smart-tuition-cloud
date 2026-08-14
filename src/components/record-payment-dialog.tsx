@@ -26,8 +26,10 @@ import {
 import { listPaymentsByStudent, listStudents, recordPayment } from "@/lib/data/adapter";
 import { todayLocalISO } from "@/lib/format";
 import type { Payment, Student } from "@/lib/data/types";
+import { studentsListQuery } from "@/lib/query/lists";
+import { invalidateAfterPayment, prependPayment } from "@/lib/query/invalidate";
 
-const STUDENTS_QUERY_KEY = ["students-list"];
+const STUDENTS_QUERY_KEY = studentsListQuery.queryKey;
 
 /**
  * The one Receive Payment dialog used everywhere a payment can be
@@ -152,20 +154,8 @@ export function RecordPaymentDialog({
       setDateError("");
       setDuplicateAckKey(null);
 
-      // Force a real refetch of every cached query, not just active ones.
-      // invalidateQueries() with no options defaults to refetchType:
-      // "active" — any page not currently mounted (Dashboard, Student
-      // List, Student Details opened from elsewhere, ...) would only be
-      // flagged stale, and since their loaders use ensureQueryData (whose
-      // revalidateIfStale option defaults to false), a merely-stale entry
-      // is served as-is on the next visit with no network request. That's
-      // what made Fee Summary/Dashboard totals/Student List progress look
-      // frozen until a hard reload wiped the whole client cache. This is
-      // the one place every payment-affecting mutation in the app goes
-      // through the same fix (see also payment-row-menu.tsx,
-      // import-students-dialog.tsx, recycle-bin.tsx) — no per-page wiring
-      // to remember for whatever the next new page turns out to be.
-      await qc.invalidateQueries({ refetchType: "all" });
+      prependPayment(qc, created);
+      await invalidateAfterPayment(qc);
 
       onRecorded?.(created);
     } catch (e) {

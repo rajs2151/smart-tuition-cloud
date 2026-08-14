@@ -22,6 +22,7 @@ import { createStudent, listStudents, recordPayment } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
 import { todayLocalISO } from "@/lib/format";
 import type { Batch, Payment } from "@/lib/data/types";
+import { invalidateAfterStudentImport } from "@/lib/query/invalidate";
 
 // ---------- Types ----------
 
@@ -516,7 +517,7 @@ export function ImportStudentsDialog({
 
     setImported(results);
     setStage("done");
-    await qc.invalidateQueries({ refetchType: "all" });
+    await invalidateAfterStudentImport(qc);
     const ok = results.filter((r) => r.status === "success").length;
     const payFailures = results.filter((r) => r.status === "success" && r.paymentError).length;
     toast.success(`Imported ${ok} students`);

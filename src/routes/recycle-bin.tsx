@@ -25,6 +25,7 @@ import {
   listAuditLogs,
 } from "@/lib/data/adapter";
 import { fmtDate } from "@/lib/format";
+import { invalidateAfterBatch, invalidateAfterPayment, invalidateAfterStudent } from "@/lib/query/invalidate";
 
 export const Route = createFileRoute("/recycle-bin")({
   head: () => ({
@@ -94,7 +95,9 @@ function RecyclePage() {
       qc.invalidateQueries({ queryKey: ["deleted-batches"] }),
       qc.invalidateQueries({ queryKey: ["deleted-payments"] }),
       qc.invalidateQueries({ queryKey: ["audit-logs"] }),
-      qc.invalidateQueries({ refetchType: "all" }),
+      invalidateAfterStudent(qc),
+      invalidateAfterBatch(qc),
+      invalidateAfterPayment(qc),
     ]);
   };
 

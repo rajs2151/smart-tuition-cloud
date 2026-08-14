@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Plus, BookOpen, GraduationCap, Pencil, Trash2, FileDown } from "lucide-react";
@@ -20,7 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import {
-  createBatch, deleteBatch, listBatches, listPayments, listPaymentsForBatchInRange, listStudents, updateBatch,
+  createBatch, deleteBatch, listPaymentsForBatchInRange, updateBatch,
 } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
 import { inr, fmtDate, todayLocalISO } from "@/lib/format";
@@ -30,38 +30,41 @@ import { ImportStudentsDialog } from "@/components/import-students-dialog";
 import { Upload } from "lucide-react";
 import { downloadBatchFeeReport } from "@/lib/reports/batch-fee-report";
 import { downloadBatchCollectionReport } from "@/lib/reports/batch-collection-report";
-
-const q = {
-  queryKey: ["batches-page"],
-  queryFn: async () => ({
-    batches: await listBatches(),
-    students: await listStudents(),
-    payments: await listPayments(),
-  }),
-};
+import { batchesListQuery, paymentsListQuery, studentsListQuery, useBatchesList, usePaymentsList, useStudentsList } from "@/lib/query/lists";
+import { invalidateAfterBatch } from "@/lib/query/invalidate";
 
 export const Route = createFileRoute("/batches")({
   head: () => ({ meta: [{ title: "Batches — Vidyafee" }] }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(q),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData({ ...studentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...paymentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...batchesListQuery, revalidateIfStale: true }),
+    ]),
   component: BatchesPage,
 });
 
 function BatchesPage() {
-  const { data } = useSuspenseQuery(q);
+  const studentsQ = useStudentsList();
+  const paymentsQ = usePaymentsList();
+  const batchesQ = useBatchesList();
+  const students = studentsQ.data ?? [];
+  const payments = paymentsQ.data ?? [];
+  const batches = batchesQ.data ?? [];
   const [tab, setTab] = useState<"all" | "standard" | "exam">("all");
 
-  const filtered = data.batches.filter((b) =>
+  const filtered = batches.filter((b) =>
     tab === "all" ? true : tab === "standard" ? b.type === "standard" : b.type === "exam",
   );
 
   const countStudents = (batchId: string) =>
-    data.students.filter((s) => s.batchId === batchId).length;
+    students.filter((s) => s.batchId === batchId).length;
 
   return (
     <>
       <AppHeader
         title="Batches"
-        subtitle={`${data.batches.length} batches · ${data.batches.filter((b) => b.active).length} active`}
+        subtitle={`${batches.length} batches · ${batches.filter((b) => b.active).length} active`}
         actions={<BatchDialog />}
       />
       <main className="flex-1 space-y-4 p-4 md:p-6">
@@ -120,7 +123,7 @@ function BatchesPage() {
                     </div>
 
                     <DownloadCollectionReportButton batch={b} />
-                    <DownloadFeeReportButton batch={b} students={data.students} payments={data.payments} />
+                    <DownloadFeeReportButton batch={b} students={students} payments={payments} />
                   </CardContent>
                 </Card>
               ))}
@@ -144,7 +147,7 @@ function DeleteBatchButton({ id }: { id: string }) {
       onClick={async () => {
         if (!confirm("Delete this batch?")) return;
         await deleteBatch(id);
-        await qc.invalidateQueries();
+        await invalidateAfterBatch(qc);
         toast.success("Batch deleted");
       }}
     >
@@ -182,12 +185,12 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
     if (isEdit && batch) {
       const updated = await updateBatch(batch.id, form);
       toast.success("Batch updated");
-      await qc.invalidateQueries({ refetchType: "all" });
+      await invalidateAfterBatch(qc);
       return updated;
     }
     const created = await createBatch(form);
     toast.success("Batch created");
-    await qc.invalidateQueries();
+    await invalidateAfterBatch(qc);
     return created;
   };
 

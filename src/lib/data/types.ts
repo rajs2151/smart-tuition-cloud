@@ -173,6 +173,8 @@ export type AppSettings = {
   receipt: ReceiptConfig;
   master: MasterSettings;
   attendance: AttendanceSettings;
+  /** Dashboard "Needs follow-up" cutoff (percent collected, inclusive). */
+  followUpThreshold: number;
 };
 
 // ---- Attendance ----

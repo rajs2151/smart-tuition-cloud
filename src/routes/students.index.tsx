@@ -1,5 +1,4 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Search, Filter, Phone } from "lucide-react";
 
@@ -13,17 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AddStudentDialog } from "@/components/add-student-dialog";
 import { StudentRowMenu } from "@/components/student-row-menu";
 
-import { listBatches, listPayments, listStudents } from "@/lib/data/adapter";
 import { initials, inr } from "@/lib/format";
-
-const q = {
-  queryKey: ["students-page"],
-  queryFn: async () => ({
-    students: await listStudents(),
-    batches: await listBatches(),
-    payments: await listPayments(),
-  }),
-};
+import { studentsListQuery, paymentsListQuery, batchesListQuery, useStudentsList, usePaymentsList, useBatchesList } from "@/lib/query/lists";
 
 export const Route = createFileRoute("/students/")({
   head: () => ({
@@ -32,12 +22,23 @@ export const Route = createFileRoute("/students/")({
       { name: "description", content: "Manage student records, batches and fee status." },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(q),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData({ ...studentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...paymentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...batchesListQuery, revalidateIfStale: true }),
+    ]),
   component: StudentsPage,
 });
 
 function StudentsPage() {
-  const { data } = useSuspenseQuery(q);
+  const studentsQ = useStudentsList();
+  const paymentsQ = usePaymentsList();
+  const batchesQ = useBatchesList();
+  const students = studentsQ.data ?? [];
+  const payments = paymentsQ.data ?? [];
+  const batches = batchesQ.data ?? [];
+  const fetching = studentsQ.isFetching || paymentsQ.isFetching || batchesQ.isFetching;
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [batch, setBatch] = useState<string>("all");
@@ -52,16 +53,16 @@ function StudentsPage() {
   // agrees.
   const collectedByStudent = useMemo(() => {
     const map = new Map<string, number>();
-    for (const p of data.payments) {
+    for (const p of payments) {
       if (p.voided) continue;
       map.set(p.studentId, (map.get(p.studentId) ?? 0) + p.amount);
     }
     return map;
-  }, [data.payments]);
+  }, [payments]);
 
   const filtered = useMemo(
     () =>
-      data.students.filter((s) => {
+      students.filter((s) => {
         const collected = collectedByStudent.get(s.id) ?? 0;
         if (batch !== "all" && s.batchId !== batch) return false;
         if (status === "due") {
@@ -77,18 +78,18 @@ function StudentsPage() {
           s.phone.includes(q)
         );
       }),
-    [data.students, collectedByStudent, search, batch, status],
+    [students, collectedByStudent, search, batch, status],
   );
 
   return (
     <>
       <AppHeader
         title="Students"
-        subtitle={`${data.students.length} total · ${data.students.filter((s) => s.status === "active").length} active`}
+        subtitle={`${students.length} total · ${students.filter((s) => s.status === "active").length} active`}
         actions={<AddStudentDialog />}
       />
 
-      <main className="flex-1 space-y-4 p-4 md:p-6">
+      <main className={`flex-1 space-y-4 p-4 md:p-6 ${fetching ? "opacity-70 transition-opacity" : ""}`}>
         <Card>
           <CardContent className="flex flex-wrap items-center gap-3 p-4">
             <div className="relative flex-1 min-w-[220px]">
@@ -107,7 +108,7 @@ function StudentsPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All batches</SelectItem>
-                {data.batches.map((b) => (
+                {batches.map((b) => (
                   <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -148,7 +149,7 @@ function StudentsPage() {
               const billed = s.totalFee - s.discount;
               const due = Math.max(0, billed - collected);
               const pct = Math.round((collected / Math.max(1, billed)) * 100);
-              const batchName = data.batches.find((b) => b.id === s.batchId)?.name ?? s.course;
+              const batchName = batches.find((b) => b.id === s.batchId)?.name ?? s.course;
               return (
                 <div
                   key={s.id}
@@ -203,7 +204,7 @@ function StudentsPage() {
               const billed = s.totalFee - s.discount;
               const due = Math.max(0, billed - collected);
               const pct = Math.round((collected / Math.max(1, billed)) * 100);
-              const batchName = data.batches.find((b) => b.id === s.batchId)?.name ?? s.course;
+              const batchName = batches.find((b) => b.id === s.batchId)?.name ?? s.course;
               return (
                 <div
                   key={s.id}

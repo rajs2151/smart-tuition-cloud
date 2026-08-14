@@ -16,6 +16,7 @@ import { AddStudentDialog } from "@/components/add-student-dialog";
 import { deleteStudent, listPaymentsByStudent } from "@/lib/data/adapter";
 import { useSession } from "@/lib/auth/session";
 import type { Student } from "@/lib/data/types";
+import { invalidateAfterStudent } from "@/lib/query/invalidate";
 
 export function StudentRowMenu({ student }: { student: Student }) {
   const qc = useQueryClient();
@@ -43,7 +44,7 @@ export function StudentRowMenu({ student }: { student: Student }) {
     try {
       await deleteStudent(student.id);
       toast.success("Student archived");
-      await qc.invalidateQueries();
+      await invalidateAfterStudent(qc);
       setArchiveOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not archive student");

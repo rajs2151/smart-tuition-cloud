@@ -262,7 +262,8 @@ pass, not a quick fix.
 ## Pending Migrations Not Yet Applied to Production
 
 Status:
-Messaging migration pending apply (`20260814000000_message_templates_and_comm_logs.sql`)
+Messaging migration pending apply (`20260814000000_message_templates_and_comm_logs.sql`);
+follow-up threshold column pending apply (`20260814230000_follow_up_threshold.sql`)
 
 Notes:
 All 15 migrations on `main` (up through
@@ -301,15 +302,14 @@ lying with the cache. `students.paid_fee` is still written by
 ## Follow-up Threshold (Dashboard) Not Persisted
 
 Status:
-Working as built, may need revisiting
+Fixed (2026-08-14) — stored on `institutes.follow_up_threshold` (default 40)
 
 Issue:
-The "Students Needing Follow-up" card's threshold (default ≤40%
-collected) is a plain client-side Select, reset to the default every
-session/page load — not stored per-institute. Built this way
-deliberately (a settings field + migration felt disproportionate to
-what was asked), but worth revisiting if owners want their chosen
-threshold to persist across visits/devices.
+The "Students Needing Follow-up" card's threshold is now persisted per
+institute (migration `20260814230000_follow_up_threshold.sql`). Changing
+the Select writes the column; owners who pick ≤20% keep that choice
+across visits and devices. Apply the migration before the write will
+succeed in production.
 
 ---
 

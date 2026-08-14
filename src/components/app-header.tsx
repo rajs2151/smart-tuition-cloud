@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSession } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth/session";
-import { listPayments, listStudents } from "@/lib/data/adapter";
+import { paymentsListQuery, studentsListQuery } from "@/lib/query/lists";
 
 export function AppHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) {
   const { email, role } = useSession();
@@ -75,20 +75,23 @@ function HeaderSearch() {
   const [open, setOpen] = useState(false);
   const query = term.trim().toLowerCase();
 
-  const resultsQuery = useQuery({
-    queryKey: ["header-search-data"],
-    queryFn: async () => ({ students: await listStudents(), payments: await listPayments() }),
+  const studentsQuery = useQuery({
+    ...studentsListQuery,
+    enabled: query.length >= 2,
+  });
+  const paymentsQuery = useQuery({
+    ...paymentsListQuery,
     enabled: query.length >= 2,
   });
 
   const students = query.length >= 2
-    ? (resultsQuery.data?.students ?? []).filter(
+    ? (studentsQuery.data ?? []).filter(
         (s) => s.name.toLowerCase().includes(query) || s.rollNo.toLowerCase().includes(query) || s.phone.includes(query),
       ).slice(0, 5)
     : [];
   const receipts = query.length >= 2
-    ? (resultsQuery.data?.payments ?? [])
-        .map((p) => ({ ...p, student: resultsQuery.data?.students.find((s) => s.id === p.studentId) }))
+    ? (paymentsQuery.data ?? [])
+        .map((p) => ({ ...p, student: (studentsQuery.data ?? []).find((s) => s.id === p.studentId) }))
         .filter((p) => p.receiptNo.toLowerCase().includes(query) || (p.student?.name.toLowerCase().includes(query) ?? false))
         .slice(0, 5)
     : [];
@@ -108,7 +111,7 @@ function HeaderSearch() {
       />
       {showDropdown && (
         <div className="absolute right-0 top-full z-40 mt-1 w-96 rounded-lg border bg-popover p-1 shadow-lg">
-          {resultsQuery.isLoading ? (
+          {studentsQuery.isLoading || paymentsQuery.isLoading ? (
             <p className="p-3 text-sm text-muted-foreground">Searching…</p>
           ) : students.length === 0 && receipts.length === 0 ? (
             <p className="p-3 text-sm text-muted-foreground">No matches for "{term}"</p>

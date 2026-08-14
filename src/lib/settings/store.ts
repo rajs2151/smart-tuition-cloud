@@ -57,11 +57,14 @@ export const DEFAULT_ATTENDANCE: AttendanceSettings = {
   lockTime: null,
 };
 
+export const DEFAULT_FOLLOW_UP_THRESHOLD = 40;
+
 export const DEFAULT_SETTINGS: AppSettings = {
   institute: DEFAULT_INSTITUTE,
   receipt: DEFAULT_RECEIPT,
   master: DEFAULT_MASTER,
   attendance: DEFAULT_ATTENDANCE,
+  followUpThreshold: DEFAULT_FOLLOW_UP_THRESHOLD,
 };
 
 let state: AppSettings = DEFAULT_SETTINGS;
@@ -108,6 +111,7 @@ export function hydrateSettingsFromDb(row: any) {
       language: (row.attendance_language ?? DEFAULT_ATTENDANCE.language) as AttendanceSettings["language"],
       lockTime: row.attendance_lock_time ?? null,
     },
+    followUpThreshold: Number(row.follow_up_threshold ?? DEFAULT_FOLLOW_UP_THRESHOLD) || DEFAULT_FOLLOW_UP_THRESHOLD,
   };
   emit();
 }
@@ -188,6 +192,18 @@ export async function setReceiptConfig(patch: Partial<ReceiptConfig>) {
     state = { ...state, receipt: previous };
     emit();
     throw new Error("Couldn't save receipt settings. Please try again.");
+  }
+}
+
+export async function setFollowUpThreshold(value: number) {
+  const previous = state.followUpThreshold;
+  state = { ...state, followUpThreshold: value };
+  emit();
+  const ok = await pushInstituteUpdate({ follow_up_threshold: value });
+  if (!ok) {
+    state = { ...state, followUpThreshold: previous };
+    emit();
+    throw new Error("Couldn't save follow-up threshold. Please try again.");
   }
 }
 

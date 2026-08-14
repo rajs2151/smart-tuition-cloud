@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 
@@ -16,14 +16,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-import { createStudent, updateStudent, listBatches } from "@/lib/data/adapter";
+import { createStudent, updateStudent } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
 import type { Student } from "@/lib/data/types";
-
-const batchesQ = {
-  queryKey: ["all-batches"],
-  queryFn: () => listBatches(),
-};
+import { batchesListQuery } from "@/lib/query/lists";
+import { invalidateAfterStudent } from "@/lib/query/invalidate";
 
 export function AddStudentDialog({ trigger, student, open: openProp, onOpenChange: onOpenChangeProp }: {
   trigger?: React.ReactNode;
@@ -34,7 +31,7 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
 }) {
   const qc = useQueryClient();
   const settings = useSettings();
-  const { data: batches } = useSuspenseQuery(batchesQ);
+  const { data: batches = [] } = useQuery({ ...batchesListQuery, placeholderData: keepPreviousData });
   const isEdit = !!student;
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
@@ -134,7 +131,7 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
       });
       toast.success("Student admitted");
     }
-    await qc.invalidateQueries();
+    await invalidateAfterStudent(qc);
     setOpen(false);
   };
 

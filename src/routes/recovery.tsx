@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -31,7 +30,6 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 
-import { listBatches, listPayments, listStudents } from "@/lib/data/adapter";
 import { initials, inr, inrShort, fmtDate } from "@/lib/format";
 import {
   buildContext, openWhatsApp, pickMobile, renderMessage, waLink,
@@ -42,15 +40,7 @@ import {
 import { CATEGORY_LABELS, type TemplateCategory } from "@/lib/messaging/templates";
 import { useSettings } from "@/lib/settings/store";
 import type { Batch, Student } from "@/lib/data/types";
-
-const q = {
-  queryKey: ["recovery-page"],
-  queryFn: async () => ({
-    students: await listStudents(),
-    payments: await listPayments(),
-    batches: await listBatches(),
-  }),
-};
+import { batchesListQuery, paymentsListQuery, studentsListQuery, useBatchesList, usePaymentsList, useStudentsList } from "@/lib/query/lists";
 
 export const Route = createFileRoute("/recovery")({
   head: () => ({
@@ -59,7 +49,12 @@ export const Route = createFileRoute("/recovery")({
       { name: "description", content: "Recover pending fees faster with priority-based WhatsApp reminders." },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(q),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData({ ...studentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...paymentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...batchesListQuery, revalidateIfStale: true }),
+    ]),
   component: RecoveryPage,
 });
 
@@ -75,7 +70,12 @@ type Row = Student & {
 };
 
 function RecoveryPage() {
-  const { data } = useSuspenseQuery(q);
+  const studentsQ = useStudentsList();
+  const paymentsQ = usePaymentsList();
+  const batchesQ = useBatchesList();
+  const students = studentsQ.data ?? [];
+  const payments = paymentsQ.data ?? [];
+  const batches = batchesQ.data ?? [];
   const messaging = useMessaging();
   const { institute } = useSettings();
 
@@ -85,28 +85,28 @@ function RecoveryPage() {
     // page), not student.paidFee — that column can drift if the
     // post-payment reconcile step fails.
     const collectedByStudent = new Map<string, number>();
-    for (const p of data.payments) {
+    for (const p of payments) {
       if (p.voided) continue;
       collectedByStudent.set(p.studentId, (collectedByStudent.get(p.studentId) ?? 0) + p.amount);
     }
-    return data.students
+    return students
       .map((s) => {
         const billed = Math.max(0, s.totalFee - s.discount);
         const paid = collectedByStudent.get(s.id) ?? 0;
         const pending = Math.max(0, billed - paid);
         const pct = billed > 0 ? pending / billed : 0;
-        const lastPay = data.payments
+        const lastPay = payments
           .filter((p) => p.studentId === s.id && !p.voided)
           .sort((a, b) => b.date.localeCompare(a.date))[0];
         const daysSince = lastPay
           ? Math.floor((today - new Date(lastPay.date).getTime()) / 86400000)
           : 9999;
         const priority: Priority = pct > 0.5 ? "high" : pct >= 0.25 ? "medium" : "low";
-        const batch = data.batches.find((b) => b.id === s.batchId);
+        const batch = batches.find((b) => b.id === s.batchId);
         return { ...s, paidFee: paid, billed, pending, pct, daysSince, priority, batch, mobile: pickMobile(s) };
       })
       .filter((r) => r.pending > 0);
-  }, [data]);
+  }, [students, payments, batches]);
 
   // Filters
   const [priority, setPriority] = useState<Priority | "all">("all");
@@ -134,12 +134,12 @@ function RecoveryPage() {
     const pending = rows.reduce((a, r) => a + r.pending, 0);
     const high = rows.filter((r) => r.priority === "high").length;
     const monthStart = new Date(); monthStart.setDate(1);
-    const collectedMonth = data.payments
+    const collectedMonth = payments
       .filter((p) => new Date(p.date) >= monthStart)
       .reduce((a, p) => a + p.amount, 0);
     const recoveryPct = pending > 0 ? (collectedMonth / (collectedMonth + pending)) * 100 : 100;
     return { pending, students: rows.length, high, collectedMonth, recoveryPct };
-  }, [rows, data.payments]);
+  }, [rows, payments]);
 
   // Top pending batches
   const byBatch = useMemo(() => {
@@ -163,10 +163,10 @@ function RecoveryPage() {
     const ids = new Set(
       messaging.logs.filter((l) => l.paymentReceivedAfter).map((l) => l.studentId),
     );
-    return data.payments
+    return payments
       .filter((p) => ids.has(p.studentId))
       .reduce((a, p) => a + p.amount, 0);
-  }, [messaging.logs, data.payments]);
+  }, [messaging.logs, payments]);
 
   return (
     <>
@@ -209,7 +209,7 @@ function RecoveryPage() {
                     <SelectTrigger className="h-8 w-40"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">All batches</SelectItem>
-                      {data.batches.map((b) => (
+                      {batches.map((b) => (
                         <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                       ))}
                     </SelectContent>

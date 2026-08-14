@@ -1,6 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   Area,
   AreaChart,
@@ -36,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AddStudentDialog } from "@/components/add-student-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -46,23 +46,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { listBatches, listPayments, listStudents } from "@/lib/data/adapter";
-import { useSettings } from "@/lib/settings/store";
+import { useSettings, setFollowUpThreshold } from "@/lib/settings/store";
 import { fmtDate, initials, inr, inrShort } from "@/lib/format";
-import { getMessaging } from "@/lib/messaging/store";
+import { useMessaging } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
-
-const dashboardQuery = {
-  queryKey: ["dashboard"],
-  queryFn: async () => {
-    const [students, payments, batches] = await Promise.all([
-      listStudents(),
-      listPayments(),
-      listBatches(),
-    ]);
-    return { students, payments, batches };
-  },
-};
+import { useBatchesList, usePaymentsList, useStudentsList } from "@/lib/query/lists";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -71,20 +59,24 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "Live overview of collections, dues and admissions for your institute." },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(dashboardQuery),
   component: Dashboard,
 });
 
 function Dashboard() {
-  const { data } = useSuspenseQuery(dashboardQuery);
-  const { institute } = useSettings();
-  const { students, payments, batches } = data;
+  const studentsQ = useStudentsList();
+  const paymentsQ = usePaymentsList();
+  const batchesQ = useBatchesList();
+  const showSkel = studentsQ.isPending || paymentsQ.isPending || batchesQ.isPending;
+  const students = studentsQ.data ?? [];
+  const payments = paymentsQ.data ?? [];
+  const batches = batchesQ.data ?? [];
+  const { institute, followUpThreshold } = useSettings();
+  const { templates, defaults } = useMessaging();
 
   const [studentsModalOpen, setStudentsModalOpen] = useState(false);
   const [collectionModalOpen, setCollectionModalOpen] = useState(false);
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
-  const [followUpThreshold, setFollowUpThreshold] = useState(40);
 
   // Collected is derived from the payments ledger (already loaded on this
   // page), not from the cached student.paidFee column. That column is
@@ -174,7 +166,6 @@ function Dashboard() {
       toast.error("No contact number on file for this student.");
       return;
     }
-    const { templates, defaults } = getMessaging();
     const tpl = templates.find((t) => t.id === defaults.reminder) ?? templates[0];
     if (!tpl) {
       toast.error("No reminder template configured.");
@@ -263,6 +254,10 @@ function Dashboard() {
           </Link>
         </div>
 
+        {showSkel ? (
+          <DashboardSkeletons />
+        ) : (
+          <>
         {/* KPIs */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Kpi
@@ -355,7 +350,11 @@ function Dashboard() {
                 <CardTitle className="text-base">Needs follow-up</CardTitle>
                 <Select
                   value={String(followUpThreshold)}
-                  onValueChange={(v) => setFollowUpThreshold(Number(v))}
+                  onValueChange={(v) => {
+                    void setFollowUpThreshold(Number(v)).catch((e) =>
+                      toast.error(e instanceof Error ? e.message : "Could not save threshold"),
+                    );
+                  }}
                 >
                   <SelectTrigger className="h-7 w-[84px] text-xs">
                     <SelectValue />
@@ -567,6 +566,8 @@ function Dashboard() {
             </div>
           </CardContent>
         </Card>
+          </>
+        )}
       </main>
 
       <Dialog open={studentsModalOpen} onOpenChange={setStudentsModalOpen}>
@@ -652,6 +653,53 @@ function Dashboard() {
           </div>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+function DashboardSkeletons() {
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="space-y-3 p-5">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-8 w-36" />
+              <Skeleton className="h-3 w-20" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="mt-2 h-3 w-24" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-64 w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-4 w-32" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-4 w-48" />
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
     </>
   );
 }
