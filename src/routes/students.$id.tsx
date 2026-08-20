@@ -31,7 +31,7 @@ import {
 import { fmtDate, initials, inr } from "@/lib/format";
 import { exportElementToPdf } from "@/lib/pdf/export";
 import { useSettings } from "@/lib/settings/store";
-import { useMessaging } from "@/lib/messaging/store";
+import { useMessaging, logComm } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { RecordPaymentDialog } from "@/components/record-payment-dialog";
 
@@ -119,6 +119,16 @@ function StudentDetail() {
     }
     const msg = renderMessage(tpl, buildContext({ student: s, batch, pending: due, extras: { PaidAmount: collected } }));
     openWhatsApp(mobile, msg);
+    void logComm({
+      studentId: s.id,
+      studentName: s.name,
+      mobile,
+      templateId: tpl.id,
+      templateName: tpl.name,
+      category: "reminder",
+      message: msg,
+      sentBy: "student-detail",
+    });
   };
 
   return (

@@ -71,7 +71,24 @@ export function waLink(mobile: string, message: string): string {
   return `https://wa.me/${m}?text=${encodeURIComponent(message)}`;
 }
 
+/**
+ * Opens a single pre-filled WhatsApp chat. Must be called from a user gesture.
+ * Never call this in a loop / setTimeout cascade — popup blockers and TWAs
+ * will only honor the first open (see bulk recovery sequential UX instead).
+ */
 export function openWhatsApp(mobile: string, message: string) {
   if (typeof window === "undefined") return;
-  window.open(waLink(mobile, message), "_blank", "noopener,noreferrer");
+  const url = waLink(mobile, message);
+  const popup = window.open(url, "_blank", "noopener,noreferrer");
+  // TWA / strict WebViews may swallow window.open; fall back to a synthetic
+  // <a target=_blank> click which still leaves the app in the back stack.
+  if (!popup || popup.closed) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
 }

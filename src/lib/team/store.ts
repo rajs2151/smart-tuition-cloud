@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getSession } from "@/lib/auth/session";
 import { MAX_INSTITUTE_USERS, type MemberRole } from "@/lib/auth/roles";
@@ -51,6 +51,7 @@ export async function loadTeamMembers() {
   if (error) {
     console.error("[team] load error", error);
     set({ loading: false, error: "Couldn't load team members. Please try again." });
+    toast.error("Couldn't load team members. Please try again.");
     return;
   }
   set({ loading: false, members: (data ?? []).map(fromRow) });

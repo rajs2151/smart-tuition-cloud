@@ -471,6 +471,10 @@ function BulkReminderDialog({ rows }: { rows: Row[] }) {
   const [batchId, setBatchId] = useState<string>("");
   const [tplId, setTplId] = useState(defaults.reminder);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // After Configure → Send, we walk recipients one gesture at a time (TWA-safe).
+  const [queue, setQueue] = useState<Row[] | null>(null);
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [sentCount, setSentCount] = useState(0);
 
   const audienceRows = useMemo(() => {
     let xs = rows;
@@ -494,22 +498,59 @@ function BulkReminderDialog({ rows }: { rows: Row[] }) {
     ? renderMessage(tpl, buildContext({ student: audienceRows[0], batch: audienceRows[0].batch, pending: audienceRows[0].pending }))
     : "";
 
-  const sendAll = () => {
+  const resetQueue = () => {
+    setQueue(null);
+    setQueueIndex(0);
+    setSentCount(0);
+  };
+
+  const startSequential = () => {
     if (!tpl) return toast.error("Pick a template");
     const targets = audienceRows.filter((r) => selected.has(r.id) && r.mobile);
     if (targets.length === 0) return toast.error("No recipients with a mobile number");
-    targets.forEach((r, i) => {
-      const m = renderMessage(tpl, buildContext({ student: r, batch: r.batch, pending: r.pending }));
-      // stagger window.open to avoid pop-up blocker (only first one will actually open in most browsers)
-      setTimeout(() => openWhatsApp(r.mobile, m), i * 250);
-      void logComm({
-        studentId: r.id, studentName: r.name, mobile: r.mobile,
-        templateId: tpl.id, templateName: tpl.name, category: "reminder",
-        message: m, sentBy: "owner (bulk)",
-      });
+    setQueue(targets);
+    setQueueIndex(0);
+    setSentCount(0);
+  };
+
+  const current = queue?.[queueIndex];
+  const currentMessage =
+    current && tpl
+      ? renderMessage(tpl, buildContext({ student: current, batch: current.batch, pending: current.pending }))
+      : "";
+
+  const sendAndNext = () => {
+    if (!current || !tpl || !queue) return;
+    openWhatsApp(current.mobile, currentMessage);
+    void logComm({
+      studentId: current.id,
+      studentName: current.name,
+      mobile: current.mobile,
+      templateId: tpl.id,
+      templateName: tpl.name,
+      category: "reminder",
+      message: currentMessage,
+      sentBy: "owner (bulk)",
     });
-    toast.success(`${targets.length} reminders queued — confirm each WhatsApp tab.`);
-    setOpen(false);
+    const nextSent = sentCount + 1;
+    setSentCount(nextSent);
+    if (queueIndex + 1 >= queue.length) {
+      toast.success(`Opened ${nextSent} of ${queue.length} WhatsApp reminders.`);
+      setOpen(false);
+      resetQueue();
+    } else {
+      setQueueIndex((i) => i + 1);
+    }
+  };
+
+  const skipOne = () => {
+    if (!queue) return;
+    if (queueIndex + 1 >= queue.length) {
+      setOpen(false);
+      resetQueue();
+    } else {
+      setQueueIndex((i) => i + 1);
+    }
   };
 
   const batches = useMemo(() => {
@@ -519,95 +560,135 @@ function BulkReminderDialog({ rows }: { rows: Row[] }) {
   }, [rows]);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) resetQueue();
+      }}
+    >
       <DialogTrigger asChild>
         <Button><Send className="h-4 w-4" /> Bulk reminder</Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader><DialogTitle>Bulk WhatsApp reminder</DialogTitle></DialogHeader>
-        <div className="grid gap-4 md:grid-cols-2">
+
+        {queue && current ? (
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Audience</Label>
-              <Select value={audience} onValueChange={(v) => setAudience(v as typeof audience)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All students with pending fees</SelectItem>
-                  <SelectItem value="high">High priority (&gt;50% pending)</SelectItem>
-                  <SelectItem value="due7">Last paid within 7 days</SelectItem>
-                  <SelectItem value="overdue">Overdue (&gt;30 days)</SelectItem>
-                  <SelectItem value="batch">Specific batch</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                Recipient {queueIndex + 1} of {queue.length}
+              </span>
+              <Badge variant="secondary">{current.name}</Badge>
             </div>
-            {audience === "batch" && (
-              <Select value={batchId} onValueChange={setBatchId}>
-                <SelectTrigger><SelectValue placeholder="Pick batch" /></SelectTrigger>
-                <SelectContent>
-                  {batches.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Template</Label>
-              <Select value={tplId} onValueChange={setTplId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {templates.filter((t) => t.category === "reminder").map((t) => (
-                    <SelectItem key={t.id} value={t.id}>{t.name} · {t.language}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="rounded-lg border p-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Selected</span>
-                <span className="font-display font-bold">{selected.size} / {audienceRows.length}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Total pending</span>
-                <span className="font-display font-bold text-destructive">{inr(totalPending)}</span>
-              </div>
-            </div>
-
-            <div className="max-h-44 overflow-y-auto rounded-lg border">
-              {audienceRows.map((r) => (
-                <label key={r.id} className="flex cursor-pointer items-center gap-2 border-b px-2 py-1.5 text-xs last:border-0">
-                  <Checkbox
-                    checked={selected.has(r.id)}
-                    onCheckedChange={(v) => {
-                      const s = new Set(selected);
-                      if (v) s.add(r.id); else s.delete(r.id);
-                      setSelected(s);
-                    }}
-                  />
-                  <span className="flex-1 truncate">{r.name}</span>
-                  <span className="text-destructive">{inrShort(r.pending)}</span>
-                </label>
-              ))}
-              {audienceRows.length === 0 && <p className="p-3 text-center text-xs text-muted-foreground">No matching students.</p>}
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-xs">WhatsApp preview (first recipient)</Label>
-            <div className="rounded-xl bg-[#e5ddd5] p-3 min-h-[260px]">
-              <div className="ml-auto max-w-[88%] rounded-lg bg-[#dcf8c6] p-3 shadow-sm">
-                <pre className="whitespace-pre-wrap break-words font-sans text-xs">{preview || "Pick a template…"}</pre>
+            <div className="rounded-xl bg-[#e5ddd5] p-3">
+              <div className="ml-auto max-w-[92%] rounded-lg bg-[#dcf8c6] p-3 shadow-sm">
+                <pre className="whitespace-pre-wrap break-words font-sans text-xs">{currentMessage}</pre>
               </div>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              <Clock className="inline h-3 w-3" /> Browsers may block multiple tabs at once — the agent stages them 250ms apart.
+              Opens WhatsApp with the message pre-filled — tap Send inside WhatsApp, then return here for the next parent.
+              One tap per parent (required for Android / TWA).
             </p>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button variant="outline" onClick={() => { setOpen(false); resetQueue(); }}>
+                Close
+              </Button>
+              <Button variant="ghost" onClick={skipOne}>
+                Skip
+              </Button>
+              <Button onClick={sendAndNext} className="bg-[#25D366] text-white hover:bg-[#1ebe5b]">
+                <Send className="h-4 w-4" /> Send &amp; next
+              </Button>
+            </DialogFooter>
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={sendAll} className="bg-[#25D366] text-white hover:bg-[#1ebe5b]">
-            <Send className="h-4 w-4" /> Send {selected.size} reminders
-          </Button>
-        </DialogFooter>
+        ) : (
+          <>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Audience</Label>
+                  <Select value={audience} onValueChange={(v) => setAudience(v as typeof audience)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All students with pending fees</SelectItem>
+                      <SelectItem value="high">High priority (&gt;50% pending)</SelectItem>
+                      <SelectItem value="due7">Last paid within 7 days</SelectItem>
+                      <SelectItem value="overdue">Overdue (&gt;30 days)</SelectItem>
+                      <SelectItem value="batch">Specific batch</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {audience === "batch" && (
+                  <Select value={batchId} onValueChange={setBatchId}>
+                    <SelectTrigger><SelectValue placeholder="Pick batch" /></SelectTrigger>
+                    <SelectContent>
+                      {batches.map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Template</Label>
+                  <Select value={tplId} onValueChange={setTplId}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {templates.filter((t) => t.category === "reminder").map((t) => (
+                        <SelectItem key={t.id} value={t.id}>{t.name} · {t.language}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="rounded-lg border p-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Selected</span>
+                    <span className="font-display font-bold">{selected.size} / {audienceRows.length}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Total pending</span>
+                    <span className="font-display font-bold text-destructive">{inr(totalPending)}</span>
+                  </div>
+                </div>
+
+                <div className="max-h-44 overflow-y-auto rounded-lg border">
+                  {audienceRows.map((r) => (
+                    <label key={r.id} className="flex min-h-11 cursor-pointer items-center gap-2 border-b px-2 py-2 text-xs last:border-0">
+                      <Checkbox
+                        checked={selected.has(r.id)}
+                        onCheckedChange={(v) => {
+                          const s = new Set(selected);
+                          if (v) s.add(r.id); else s.delete(r.id);
+                          setSelected(s);
+                        }}
+                      />
+                      <span className="flex-1 truncate">{r.name}</span>
+                      <span className="text-destructive">{inrShort(r.pending)}</span>
+                    </label>
+                  ))}
+                  {audienceRows.length === 0 && <p className="p-3 text-center text-xs text-muted-foreground">No matching students.</p>}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs">WhatsApp preview (first recipient)</Label>
+                <div className="rounded-xl bg-[#e5ddd5] p-3 min-h-[260px]">
+                  <div className="ml-auto max-w-[88%] rounded-lg bg-[#dcf8c6] p-3 shadow-sm">
+                    <pre className="whitespace-pre-wrap break-words font-sans text-xs">{preview || "Pick a template…"}</pre>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  <Clock className="inline h-3 w-3" /> Sends one parent at a time so Android / TWA can open WhatsApp on each tap.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button onClick={startSequential} className="bg-[#25D366] text-white hover:bg-[#1ebe5b]">
+                <Send className="h-4 w-4" /> Start {selected.size} reminders
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

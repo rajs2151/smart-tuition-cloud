@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Search, IndianRupee, MessageCircle } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { RouteErrorComponent } from "@/components/route-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export const Route = createFileRoute("/fees")({
       context.queryClient.ensureQueryData({ ...paymentsListQuery, revalidateIfStale: true }),
     ]),
   component: FeesPage,
+  errorComponent: RouteErrorComponent,
 });
 
 function FeesPage() {

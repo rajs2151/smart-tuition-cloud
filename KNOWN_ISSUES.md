@@ -262,18 +262,20 @@ pass, not a quick fix.
 ## Pending Migrations Not Yet Applied to Production
 
 Status:
-Messaging migration pending apply (`20260814000000_message_templates_and_comm_logs.sql`);
-follow-up threshold column pending apply (`20260814230000_follow_up_threshold.sql`)
+**Action required on production** — apply with `supabase db push` (see [`docs/TWA-SETUP.md`](docs/TWA-SETUP.md)).
+
+Code + migration files are ready on this branch:
+
+- `20260814000000_message_templates_and_comm_logs.sql`
+- `20260814230000_follow_up_threshold.sql`
+- `20260820120000_is_member_requires_active_access.sql` (disabled members cannot pass RLS)
 
 Notes:
-All 15 migrations on `main` (up through
-`20260731000000_expenses_system.sql`) are confirmed applied to the live
-Supabase project. The messaging tables migration is on
-`fix/known-issues-open` and must be applied with `supabase db push`
-after merge (or from this branch) — verify
+All migrations through `20260731000000_expenses_system.sql` were previously
+confirmed applied. Messaging / follow-up / `is_member` tighten still need a
+live `db push` (or SQL Editor apply in filename order). After push, verify
 `information_schema.role_table_grants` for `authenticated` vs `anon` /
-`PUBLIC` rather than trusting the SQL file. No live student/institute
-rows are mutated by that migration.
+`PUBLIC`. This cannot be completed from CI without production credentials.
 
 ---
 

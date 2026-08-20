@@ -52,6 +52,9 @@ npm install
 4. Also note your **project ref** — it's the `xxxxxxxx` part of the URL
    above, and is shown at the top of most dashboard pages.
 
+Copy [`.env.example`](.env.example) to `.env` and fill those values. Never
+commit `.env` (it is gitignored).
+
 ---
 
 ## 4. Apply the database schema
@@ -112,25 +115,15 @@ one isn't set). They should have identical values. That's the complete list
 of variables the app actually needs to start and run — two logical values,
 four env var names.
 
-**Not currently required, but worth knowing about:** `SUPABASE_SERVICE_ROLE_KEY`
-is read by `src/integrations/supabase/client.server.ts` and
-`src/integrations/supabase/auth-middleware.ts` (an admin client that bypasses
-RLS, and an auth middleware helper) — but as of this writing, neither file
-has any importer anywhere in the app. Confirmed by grepping the whole `src/`
-tree, not assumed. You don't need this variable to run the app today; it
-exists as scaffolding for future server-side admin functionality. If you add
-a server function that imports `client.server.ts`, you'll need to add it
-then, from your project's **Settings → API → service_role key**.
+**Not currently required:** `SUPABASE_SERVICE_ROLE_KEY` is documented in
+`.env.example` for future server-only admin work. The previous unused
+`client.server.ts` / `auth-middleware.ts` scaffolding was removed so it
+cannot accidentally ship a service-role key into a client bundle. Do not
+add a `VITE_`-prefixed service role variable.
 
-> **Note on committing `.env`:** the anon/public key and project URL are
-> designed by Supabase to be safe to expose client-side — every visitor to
-> your deployed app receives them anyway, in their browser's network tab.
-> They are **not** a secret in the way a password, or the service-role key
-> above, is. That said, the normal convention is still to keep `.env` out of
-> git (add it to `.gitignore`) and commit an `.env.example` with placeholder
-> values instead, so rotating a key later doesn't require touching tracked
-> files. This repo does not currently do that — worth adopting if you fork
-> or extend this project.
+> **Note on committing `.env`:** `.env` is gitignored; commit `.env.example`
+> only. The anon/public key is designed to be client-visible, but keeping
+> `.env` out of git still prevents accidental addition of secrets later.
 
 ---
 

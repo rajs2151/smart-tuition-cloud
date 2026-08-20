@@ -2,9 +2,10 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQueryClient, useSuspenseQuery, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CalendarCheck, CalendarOff, Ban, MessageCircle, Lock } from "lucide-react";
+import { CalendarCheck, CalendarOff, Ban, MessageCircle, Lock, Loader2 } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { RouteErrorComponent } from "@/components/route-error";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -53,6 +54,7 @@ export const Route = createFileRoute("/attendance")({
   head: () => ({ meta: [{ title: "Attendance — Vidyafee" }] }),
   loader: ({ context }) => context.queryClient.ensureQueryData(pageQuery),
   component: AttendancePage,
+  errorComponent: RouteErrorComponent,
 });
 
 function AttendancePage() {
@@ -328,9 +330,29 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
             No attendance recorded for this session.
           </CardContent>
         </Card>
+      ) : attendanceQuery.isLoading ? (
+        <Card>
+          <CardContent className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading attendance…
+          </CardContent>
+        </Card>
+      ) : attendanceQuery.isError ? (
+        <Card>
+          <CardContent className="space-y-3 p-8 text-center">
+            <p className="text-sm text-destructive">
+              {attendanceQuery.error instanceof Error
+                ? attendanceQuery.error.message
+                : "Could not load attendance for this date."}
+            </p>
+            <Button variant="outline" onClick={() => void attendanceQuery.refetch()}>
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <Card>
-          <CardContent className="p-4">
+          <CardContent className={`p-4 ${attendanceQuery.isFetching ? "opacity-70 transition-opacity" : ""}`}>
             <AttendanceGrid
               students={students}
               absentIds={absentIds}

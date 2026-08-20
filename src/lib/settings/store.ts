@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   AppSettings,
@@ -244,15 +245,17 @@ export async function setMaster(patch: Partial<MasterSettings>) {
 export function addMasterValue(key: keyof MasterSettings, value: string) {
   const list = state.master[key] as string[];
   if (!value.trim() || list.includes(value)) return;
-  void setMaster({ [key]: [...list, value] } as Partial<MasterSettings>).catch((e) =>
-    console.error("[settings] addMasterValue failed", e),
-  );
+  void setMaster({ [key]: [...list, value] } as Partial<MasterSettings>).catch((e) => {
+    console.error("[settings] addMasterValue failed", e);
+    toast.error(e instanceof Error ? e.message : "Couldn't save master list.");
+  });
 }
 export function removeMasterValue(key: keyof MasterSettings, value: string) {
   const list = state.master[key] as string[];
-  void setMaster({ [key]: list.filter((v) => v !== value) } as Partial<MasterSettings>).catch((e) =>
-    console.error("[settings] removeMasterValue failed", e),
-  );
+  void setMaster({ [key]: list.filter((v) => v !== value) } as Partial<MasterSettings>).catch((e) => {
+    console.error("[settings] removeMasterValue failed", e);
+    toast.error(e instanceof Error ? e.message : "Couldn't update master list.");
+  });
 }
 
 /**
@@ -262,9 +265,10 @@ export function removeMasterValue(key: keyof MasterSettings, value: string) {
  */
 export function nextReceiptNumber(): string {
   const n = state.receipt.nextNumber;
-  void setReceiptConfig({ nextNumber: n + 1 }).catch((e) =>
-    console.error("[settings] nextReceiptNumber save failed", e),
-  );
+  void setReceiptConfig({ nextNumber: n + 1 }).catch((e) => {
+    console.error("[settings] nextReceiptNumber save failed", e);
+    toast.error("Couldn't advance receipt number. Refresh and try again.");
+  });
   return `${state.receipt.prefix}-${String(n).padStart(4, "0")}`;
 }
 

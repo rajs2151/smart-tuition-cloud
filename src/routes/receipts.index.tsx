@@ -52,8 +52,8 @@ function ReceiptsPage() {
       <AppHeader title="Receipts" subtitle={`${payments.length} total receipts generated`} />
       <main className={`flex-1 space-y-4 p-4 md:p-6 ${fetching ? "opacity-70 transition-opacity" : ""}`}>
         <Card>
-          <CardContent className="flex flex-wrap items-center gap-3 p-4">
-            <div className="relative flex-1 min-w-[220px]">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="relative w-full min-w-0 flex-1 sm:min-w-[220px]">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search by receipt no or student…"

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { RouteErrorComponent } from "@/components/route-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,6 +87,7 @@ export const Route = createFileRoute("/expenses")({
     tab: parseExpenseTab(raw.tab),
   }),
   component: ExpensesPage,
+  errorComponent: RouteErrorComponent,
 });
 
 const MODES: ExpensePaymentMode[] = ["Cash", "UPI", "Bank Transfer", "Cheque"];

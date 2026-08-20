@@ -212,7 +212,7 @@ function MemberRow({
           {rowEditable && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8" disabled={busy}>
+                <Button variant="ghost" size="icon" className="h-11 w-11" disabled={busy}>
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>

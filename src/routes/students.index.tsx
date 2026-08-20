@@ -91,8 +91,8 @@ function StudentsPage() {
 
       <main className={`flex-1 space-y-4 p-4 md:p-6 ${fetching ? "opacity-70 transition-opacity" : ""}`}>
         <Card>
-          <CardContent className="flex flex-wrap items-center gap-3 p-4">
-            <div className="relative flex-1 min-w-[220px]">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="relative w-full min-w-0 flex-1 sm:min-w-[220px]">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search by name, roll no or phone…"
@@ -102,7 +102,7 @@ function StudentsPage() {
               />
             </div>
             <Select value={batch} onValueChange={setBatch}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-full sm:w-[200px]">
                 <Filter className="h-4 w-4 text-muted-foreground" />
                 <SelectValue placeholder="All batches" />
               </SelectTrigger>
@@ -114,7 +114,7 @@ function StudentsPage() {
               </SelectContent>
             </Select>
             <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-[160px]">
+              <SelectTrigger className="w-full sm:w-[160px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

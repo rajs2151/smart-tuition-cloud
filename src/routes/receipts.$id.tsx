@@ -13,7 +13,7 @@ import { fmtDate, inr } from "@/lib/format";
 import { useSettings } from "@/lib/settings/store";
 import { getEffectiveReceiptContact } from "@/lib/settings/receipt-contact";
 import { exportElementToPdf } from "@/lib/pdf/export";
-import { useMessaging } from "@/lib/messaging/store";
+import { useMessaging, logComm } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { toast } from "sonner";
 
@@ -96,6 +96,16 @@ function ReceiptDetail() {
     }
     const msg = renderMessage(tpl, buildContext({ student, batch, payment, pending: balance, extras: { PaidAmount: payment.amount } }));
     openWhatsApp(mobile, msg);
+    void logComm({
+      studentId: student.id,
+      studentName: student.name,
+      mobile,
+      templateId: tpl.id,
+      templateName: tpl.name,
+      category: "acknowledgement",
+      message: msg,
+      sentBy: "receipt",
+    });
   };
 
   return (

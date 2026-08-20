@@ -1,16 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { lazy, Suspense, useState } from "react";
 import {
   ArrowUpRight,
   IndianRupee,
@@ -47,10 +36,17 @@ import {
 } from "@/components/ui/select";
 
 import { useSettings, setFollowUpThreshold } from "@/lib/settings/store";
-import { fmtDate, initials, inr, inrShort } from "@/lib/format";
-import { useMessaging } from "@/lib/messaging/store";
+import { fmtDate, initials, inr } from "@/lib/format";
+import { useMessaging, logComm } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { useBatchesList, usePaymentsList, useStudentsList } from "@/lib/query/lists";
+
+const DashboardCharts = lazy(() =>
+  import("@/components/dashboard-charts").then((m) => ({ default: m.DashboardCharts })),
+);
+const DashboardBatchRevenueChart = lazy(() =>
+  import("@/components/dashboard-charts").then((m) => ({ default: m.DashboardBatchRevenueChart })),
+);
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -176,6 +172,16 @@ function Dashboard() {
       buildContext({ student: st, batch, pending: amount, dueDate, extras: { PaidAmount: collectedFor(st.id) } }),
     );
     openWhatsApp(mobile, msg);
+    void logComm({
+      studentId: st.id,
+      studentName: st.name,
+      mobile,
+      templateId: tpl.id,
+      templateName: tpl.name,
+      category: "reminder",
+      message: msg,
+      sentBy: "dashboard",
+    });
   };
 
 
@@ -297,51 +303,17 @@ function Dashboard() {
 
         <div className="grid gap-6 xl:grid-cols-3">
           {/* Revenue chart */}
-          <Card className="xl:col-span-2">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle className="text-base">Collection trend</CardTitle>
-                <p className="text-xs text-muted-foreground">Last 8 months</p>
-              </div>
-              {hasTrendData && (
-                <Badge variant="outline" className="gap-1">
-                  <TrendingUp className="h-3 w-3 text-success" /> Trending up
-                </Badge>
-              )}
-            </CardHeader>
-            <CardContent>
-              {hasTrendData ? (
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={months} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-                      <defs>
-                        <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.4} />
-                          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                      <XAxis dataKey="m" stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={inrShort} />
-                      <Tooltip
-                        contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }}
-                        formatter={(v: number) => inr(v)}
-                      />
-                      <Area type="monotone" dataKey="collected" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#g1)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="flex h-64 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-                  <TrendingUp className="h-8 w-8 opacity-40" />
-                  <p>No payments recorded in the last 8 months yet.</p>
-                  <p className="text-xs">
-                    The trend will appear here once collections start coming in.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <Suspense
+            fallback={
+              <Card className="xl:col-span-2">
+                <CardContent className="p-6">
+                  <Skeleton className="h-64 w-full" />
+                </CardContent>
+              </Card>
+            }
+          >
+            <DashboardCharts months={months} hasTrendData={hasTrendData} batchRevenue={batchRevenue} />
+          </Suspense>
 
           {/* Students needing follow-up */}
           <Card>
@@ -547,25 +519,17 @@ function Dashboard() {
         </div>
 
         {/* Batch revenue */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Revenue by batch</CardTitle>
-            <p className="text-xs text-muted-foreground">Collected fees per active batch</p>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={batchRevenue} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                  <XAxis dataKey="name" stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={inrShort} />
-                  <Tooltip formatter={(v: number) => inr(v)} contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }} />
-                  <Bar dataKey="value" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+        <Suspense
+          fallback={
+            <Card>
+              <CardContent className="p-6">
+                <Skeleton className="h-64 w-full" />
+              </CardContent>
+            </Card>
+          }
+        >
+          <DashboardBatchRevenueChart batchRevenue={batchRevenue} />
+        </Suspense>
           </>
         )}
       </main>

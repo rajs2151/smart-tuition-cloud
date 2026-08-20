@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
-import { Plus, BookOpen, GraduationCap, Pencil, Trash2, FileDown } from "lucide-react";
+import { Plus, BookOpen, GraduationCap, Pencil, Trash2, FileDown, Upload } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { RouteErrorComponent } from "@/components/route-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,13 +27,15 @@ import { useSettings } from "@/lib/settings/store";
 import { inr, fmtDate, todayLocalISO } from "@/lib/format";
 import { sanitizeNumberInput } from "@/lib/number-input";
 import type { Batch, BatchType, Standard, Board, Medium, ExamCategory, Payment, Student } from "@/lib/data/types";
-import { ImportStudentsDialog } from "@/components/import-students-dialog";
-import { Upload } from "lucide-react";
 import { downloadBatchFeeReport } from "@/lib/reports/batch-fee-report";
 import { downloadBatchCollectionReport } from "@/lib/reports/batch-collection-report";
 import { batchesListQuery, paymentsListQuery, studentsListQuery, useBatchesList, usePaymentsList, useStudentsList } from "@/lib/query/lists";
 import { invalidateAfterBatch } from "@/lib/query/invalidate";
 import { FEE_LIMITS, clampFee, isValidPersonName, sanitizePersonName } from "@/lib/validation/input-rules";
+
+const ImportStudentsDialog = lazy(() =>
+  import("@/components/import-students-dialog").then((m) => ({ default: m.ImportStudentsDialog })),
+);
 
 export const Route = createFileRoute("/batches")({
   head: () => ({ meta: [{ title: "Batches — Vidyafee" }] }),
@@ -43,6 +46,7 @@ export const Route = createFileRoute("/batches")({
       context.queryClient.ensureQueryData({ ...batchesListQuery, revalidateIfStale: true }),
     ]),
   component: BatchesPage,
+  errorComponent: RouteErrorComponent,
 });
 
 function BatchesPage() {
@@ -342,11 +346,13 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
         </DialogFooter>
       </DialogContent>
       {importFor ? (
-        <ImportStudentsDialog
-          batch={importFor}
-          open={!!importFor}
-          onOpenChange={(v) => { if (!v) setImportFor(null); }}
-        />
+        <Suspense fallback={null}>
+          <ImportStudentsDialog
+            batch={importFor}
+            open={!!importFor}
+            onOpenChange={(v) => { if (!v) setImportFor(null); }}
+          />
+        </Suspense>
       ) : null}
     </Dialog>
   );
@@ -455,10 +461,14 @@ function ImportButton({ batch }: { batch: Batch }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button size="icon" variant="ghost" onClick={() => setOpen(true)} title="Import students">
+      <Button size="icon" variant="ghost" className="h-11 w-11" onClick={() => setOpen(true)} title="Import students">
         <Upload className="h-3.5 w-3.5" />
       </Button>
-      {open ? <ImportStudentsDialog batch={batch} open={open} onOpenChange={setOpen} /> : null}
+      {open ? (
+        <Suspense fallback={null}>
+          <ImportStudentsDialog batch={batch} open={open} onOpenChange={setOpen} />
+        </Suspense>
+      ) : null}
     </>
   );
 }

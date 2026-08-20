@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
 import {
   Upload, FileSpreadsheet, Download, CheckCircle2, AlertTriangle,
   XCircle, Loader2, X,
@@ -23,6 +22,10 @@ import { useSettings } from "@/lib/settings/store";
 import { todayLocalISO } from "@/lib/format";
 import type { Batch, Payment } from "@/lib/data/types";
 import { invalidateAfterStudentImport } from "@/lib/query/invalidate";
+
+async function loadXlsx() {
+  return import("xlsx");
+}
 
 // ---------- Types ----------
 
@@ -200,6 +203,7 @@ function historicalPaymentLabel(r: ParsedRow): string {
 // ---------- Parsing ----------
 
 async function readWorkbook(file: File): Promise<RawRow[]> {
+  const XLSX = await loadXlsx();
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
   const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -329,7 +333,8 @@ export function ImportStudentsDialog({
 
   // ---------- Template download ----------
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await loadXlsx();
     const ws = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_SAMPLE]);
     ws["!cols"] = TEMPLATE_HEADERS.map(() => ({ wch: 18 }));
     const wb = XLSX.utils.book_new();
@@ -528,7 +533,7 @@ export function ImportStudentsDialog({
     }
   };
 
-  const downloadFailedCSV = () => {
+  const downloadFailedCSV = async () => {
     const failed = [
       ...imported.filter((r) => r.status === "failed").map((r) => ({ ...r.row, reason: r.error ?? "Import failed" })),
       ...imported
@@ -541,6 +546,7 @@ export function ImportStudentsDialog({
       ...rows.filter((r) => r.duplicate && r.errors.length === 0).map((r) => ({ ...r, reason: r.duplicateReason ?? "Duplicate" })),
     ];
     if (!failed.length) return;
+    const XLSX = await loadXlsx();
     const rowsAoa = [
       [...TEMPLATE_HEADERS, "Reason"],
       ...failed.map((f) => [
@@ -575,7 +581,7 @@ export function ImportStudentsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Bulk import students · {batch.name}</DialogTitle>
         </DialogHeader>
@@ -637,7 +643,34 @@ export function ImportStudentsDialog({
             )}
 
             <ScrollArea className="h-72 rounded-md border">
-              <Table>
+              {/* Mobile: stacked cards — table is too wide under ~400px */}
+              <div className="space-y-2 p-2 sm:hidden">
+                {rows.map((r) => (
+                  <div key={r.rowNumber} className="rounded-lg border bg-card p-3 text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{r.name || "—"}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{r.phone || "No mobile"}</p>
+                      </div>
+                      <span className="shrink-0 text-xs text-muted-foreground">#{r.rowNumber}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">Parent: {r.parentName ?? "—"}</p>
+                    <p className="text-xs text-muted-foreground">{historicalPaymentLabel(r)}</p>
+                    <div className="mt-2">
+                      {r.errors.length > 0 ? (
+                        <Badge variant="destructive" className="text-[10px]">{r.errors.join(", ")}</Badge>
+                      ) : r.duplicate ? (
+                        <Badge className="bg-destructive/15 text-destructive text-[10px]" variant="secondary">{r.duplicateReason}</Badge>
+                      ) : r.warnings.length > 0 ? (
+                        <Badge className="bg-warning/15 text-warning text-[10px]" variant="secondary">{r.warnings.join(", ")}</Badge>
+                      ) : (
+                        <Badge className="bg-success/15 text-success text-[10px]" variant="secondary">Ready</Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Table className="hidden sm:table">
                 <TableHeader className="sticky top-0 bg-muted/50">
                   <TableRow>
                     <TableHead className="w-12">#</TableHead>

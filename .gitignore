@@ -7,6 +7,12 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Env / secrets — keep `.env.example` tracked; never commit real `.env`
+.env
+.env.*
+!.env.example
+!.env.*.example
+
 node_modules
 dist
 dist-ssr

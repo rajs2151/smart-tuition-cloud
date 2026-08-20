@@ -190,10 +190,53 @@ export async function signOut() {
   });
 }
 
+/** Soft re-check after Android TWA / WebView resume from background. */
+function bindResumeHandlers() {
+  if (typeof document === "undefined") return;
+  let lastCheck = 0;
+  const resume = () => {
+    if (document.visibilityState !== "visible") return;
+    const now = Date.now();
+    // Debounce rapid focus/visibility flaps (keyboard, share sheet).
+    if (now - lastCheck < 2_000) return;
+    lastCheck = now;
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        console.error("[session] resume getSession failed", error);
+        return;
+      }
+      const session = data.session;
+      if (!session?.user) {
+        resetSettings();
+        currentGeneration++;
+        set({
+          status: "signed-out",
+          userId: null,
+          email: null,
+          instituteId: null,
+          role: null,
+          errorMessage: null,
+        });
+        return;
+      }
+      // Refresh membership if we were mid-error or still loading after a kill.
+      if (state.status === "error" || state.status === "loading" || !state.instituteId) {
+        setTimeout(() => loadActiveInstitute(session.user.id), 0);
+      } else {
+        set({ userId: session.user.id, email: session.user.email ?? null });
+      }
+    });
+  };
+  document.addEventListener("visibilitychange", resume);
+  window.addEventListener("pageshow", resume);
+  window.addEventListener("focus", resume);
+}
+
 let initialized = false;
 export function initAuth() {
   if (initialized) return;
   initialized = true;
+  bindResumeHandlers();
 
   // A single subscription is the ONLY source of session truth.
   //

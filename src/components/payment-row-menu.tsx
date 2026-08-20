@@ -78,7 +78,7 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Payment actions">
+          <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Payment actions">
             <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
