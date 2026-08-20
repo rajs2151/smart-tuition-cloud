@@ -75,12 +75,113 @@ export type MessagingState = {
   templates: MessageTemplate[];
   defaults: DefaultTemplateMap;
   logs: CommLog[];
+  /** True when messaging tables are missing / unreachable — use built-in offline copy. */
+  offline?: boolean;
+  offlineReason?: string;
 };
+
+function isMissingRelation(error: unknown): boolean {
+  const e = error as { code?: string; message?: string; details?: string; hint?: string };
+  const blob = `${e?.code ?? ""} ${e?.message ?? ""} ${e?.details ?? ""} ${e?.hint ?? ""}`.toLowerCase();
+  return (
+    e?.code === "42P01" ||
+    e?.code === "PGRST205" ||
+    blob.includes("does not exist") ||
+    blob.includes("schema cache") ||
+    blob.includes("could not find the table")
+  );
+}
+
+function resolveDefaults(
+  templates: MessageTemplate[],
+  fromDb?: { category: string; template_id: string }[],
+): DefaultTemplateMap {
+  const defaults: DefaultTemplateMap = { ...DEFAULT_TEMPLATE_SELECTION };
+  for (const row of fromDb ?? []) {
+    const cat = row.category as keyof DefaultTemplateMap;
+    if (cat in defaults) defaults[cat] = row.template_id;
+  }
+  for (const cat of Object.keys(defaults) as (keyof DefaultTemplateMap)[]) {
+    if (!templates.some((t) => t.id === defaults[cat])) {
+      const bySlug = templates.find((t) => t.id === DEFAULT_TEMPLATE_SELECTION[cat]);
+      const byCat = templates.find((t) => t.category === cat);
+      defaults[cat] = bySlug?.id ?? byCat?.id ?? defaults[cat];
+    }
+  }
+  return defaults;
+}
+
+function offlineFallback(reason: string): MessagingState {
+  const templates = DEFAULT_TEMPLATES.map((t) => ({ ...t }));
+  return {
+    templates,
+    defaults: resolveDefaults(templates),
+    logs: [],
+    offline: true,
+    offlineReason: reason,
+  };
+}
+
+/**
+ * If the migration applied but this institute has zero rows (seed missed),
+ * INSERT built-ins only — never UPDATE/DELETE existing live rows.
+ */
+async function ensureBuiltInsIfEmpty(instId: string): Promise<void> {
+  const { count, error } = await supabase
+    .from("message_templates")
+    .select("id", { count: "exact", head: true })
+    .eq("institute_id", instId);
+  if (error || (count ?? 0) > 0) return;
+
+  for (const t of DEFAULT_TEMPLATES) {
+    const { error: insErr } = await supabase.from("message_templates").insert({
+      institute_id: instId,
+      slug: t.id,
+      name: t.name,
+      category: t.category,
+      sub_type: t.subType ?? null,
+      language: t.language,
+      content: t.content,
+      built_in: true,
+    });
+    if (insErr && !String(insErr.message).toLowerCase().includes("duplicate")) {
+      /* leave empty; caller will still load whatever exists */
+    }
+  }
+
+  const { data: seeded } = await supabase
+    .from("message_templates")
+    .select("id, slug")
+    .eq("institute_id", instId)
+    .eq("built_in", true)
+    .eq("deleted", false);
+  const bySlug = new Map((seeded ?? []).map((r) => [r.slug as string, r.id as string]));
+  const pairs: Array<[keyof DefaultTemplateMap, string]> = [
+    ["reminder", "tpl_friendly"],
+    ["acknowledgement", "tpl_ack_partial"],
+    ["admission", "tpl_adm_confirm"],
+    ["attendance", "tpl_att_absence_en"],
+  ];
+  for (const [category, slug] of pairs) {
+    const templateId = bySlug.get(slug);
+    if (!templateId) continue;
+    await supabase.from("message_template_defaults").upsert(
+      { institute_id: instId, category, template_id: templateId },
+      { onConflict: "institute_id,category" },
+    );
+  }
+}
 
 export async function loadMessaging(): Promise<MessagingState> {
   const instId = instituteIdOrNull();
   if (!instId) {
-    return { templates: [], defaults: { ...DEFAULT_TEMPLATE_SELECTION }, logs: [] };
+    return offlineFallback("No active institute");
+  }
+
+  try {
+    await ensureBuiltInsIfEmpty(instId);
+  } catch {
+    /* probe/seed failures handled by the select below */
   }
 
   const [tplRes, defRes, logRes] = await Promise.all([
@@ -98,23 +199,29 @@ export async function loadMessaging(): Promise<MessagingState> {
       .order("created_at", { ascending: false })
       .limit(500),
   ]);
-  if (tplRes.error) throw tplRes.error;
-  if (defRes.error) throw defRes.error;
-  if (logRes.error) throw logRes.error;
+
+  if (tplRes.error || defRes.error || logRes.error) {
+    const err = tplRes.error ?? defRes.error ?? logRes.error;
+    if (isMissingRelation(err)) {
+      return offlineFallback(
+        "Messaging tables are not on this database yet. Apply migration 20260814000000_message_templates_and_comm_logs.sql (supabase db push), then refresh.",
+      );
+    }
+    throw err;
+  }
 
   const templates = (tplRes.data ?? []).map(toTemplate);
-  const defaults: DefaultTemplateMap = { ...DEFAULT_TEMPLATE_SELECTION };
-  for (const row of defRes.data ?? []) {
-    const cat = row.category as keyof DefaultTemplateMap;
-    if (cat in defaults) defaults[cat] = row.template_id;
+  if (templates.length === 0) {
+    return offlineFallback(
+      "No templates found for this institute. Apply the messaging migration or click Restore defaults after the tables exist.",
+    );
   }
-  for (const cat of Object.keys(defaults) as (keyof DefaultTemplateMap)[]) {
-    if (!templates.some((t) => t.id === defaults[cat])) {
-      const fallback = templates.find((t) => t.category === cat);
-      if (fallback) defaults[cat] = fallback.id;
-    }
-  }
-  return { templates, defaults, logs: (logRes.data ?? []).map(toLog) };
+
+  return {
+    templates,
+    defaults: resolveDefaults(templates, defRes.data ?? undefined),
+    logs: (logRes.data ?? []).map(toLog),
+  };
 }
 
 export async function insertTemplate(

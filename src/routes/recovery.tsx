@@ -346,8 +346,8 @@ function RecoveryRow({ row }: { row: Row }) {
   };
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+    <div className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_7.5rem_auto] sm:items-center">
+      <div className="flex min-w-0 items-center gap-3">
         <Avatar className="h-10 w-10 shrink-0"><AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">{initials(row.name)}</AvatarFallback></Avatar>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -364,9 +364,6 @@ function RecoveryRow({ row }: { row: Row }) {
               </>
             ) : null}
           </p>
-          {/* Pending amount was previously hidden entirely on mobile (sm:block
-              only) — surfaced here so the single most important fact on this
-              row (how much they owe) isn't lost on small screens. */}
           <p className="mt-1 text-sm font-display font-bold text-destructive sm:hidden">
             {inr(row.pending)} due · {(row.pct * 100).toFixed(0)}% · {row.daysSince > 365 ? "Never paid" : `${row.daysSince}d ago`}
           </p>
@@ -377,19 +374,21 @@ function RecoveryRow({ row }: { row: Row }) {
         <p className="font-display font-bold text-destructive">{inr(row.pending)}</p>
         <p className="text-[11px] text-muted-foreground">{(row.pct * 100).toFixed(0)}% · {row.daysSince > 365 ? "Never paid" : `${row.daysSince}d ago`}</p>
       </div>
-      <div className="flex gap-2 sm:gap-1.5">
+      <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
         <CustomMessageDialog row={row} />
         <Button
           size="sm"
           onClick={send}
-          className="flex-1 bg-[#25D366] text-white hover:bg-[#1ebe5b] sm:flex-none"
+          className="h-9 min-w-[7.5rem] flex-1 bg-[#25D366] text-white hover:bg-[#1ebe5b] sm:flex-none"
         >
           <MessageCircle className="h-4 w-4" /> WhatsApp
         </Button>
-        {row.mobile && (
-          <Button size="icon" variant="outline" asChild title="Call" className="shrink-0">
+        {row.mobile ? (
+          <Button size="icon" variant="outline" asChild title="Call" className="h-9 w-9 shrink-0">
             <a href={`tel:${row.mobile}`}><Phone className="h-4 w-4" /></a>
           </Button>
+        ) : (
+          <span className="inline-block h-9 w-9 shrink-0" aria-hidden />
         )}
       </div>
     </div>
@@ -429,7 +428,7 @@ function CustomMessageDialog({ row }: { row: Row }) {
   return (
     <Dialog open={open} onOpenChange={onOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" variant="outline" className="flex-1 sm:flex-none">Customise</Button>
+        <Button size="sm" variant="outline" className="h-9 min-w-[6.5rem] flex-1 sm:flex-none">Customise</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader><DialogTitle>Send reminder · {row.name}</DialogTitle></DialogHeader>

@@ -32,6 +32,7 @@ import { downloadBatchFeeReport } from "@/lib/reports/batch-fee-report";
 import { downloadBatchCollectionReport } from "@/lib/reports/batch-collection-report";
 import { batchesListQuery, paymentsListQuery, studentsListQuery, useBatchesList, usePaymentsList, useStudentsList } from "@/lib/query/lists";
 import { invalidateAfterBatch } from "@/lib/query/invalidate";
+import { FEE_LIMITS, clampFee, isValidPersonName, sanitizePersonName } from "@/lib/validation/input-rules";
 
 export const Route = createFileRoute("/batches")({
   head: () => ({ meta: [{ title: "Batches — Vidyafee" }] }),
@@ -175,20 +176,37 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
   const [importFor, setImportFor] = useState<Batch | null>(null);
 
   const persist = async (): Promise<Batch | null> => {
-    if (!form.name) { toast.error("Batch name is required"); return null; }
+    if (!form.name.trim()) { toast.error("Batch name is required"); return null; }
+    if (form.faculty?.trim() && !isValidPersonName(form.faculty)) {
+      toast.error("Faculty name should use letters only — no numbers or random symbols");
+      return null;
+    }
     if (form.type === "standard" && (!form.standard || !form.board || !form.medium)) {
       toast.error("Pick standard, board and medium"); return null;
     }
     if (form.type === "exam" && !form.examCategory) {
       toast.error("Pick an exam category"); return null;
     }
+    const totalCourseFee = clampFee(form.totalCourseFee, FEE_LIMITS.batchCourseFee.min, FEE_LIMITS.batchCourseFee.max);
+    const capacity = clampFee(form.capacity, FEE_LIMITS.batchCapacity.min, FEE_LIMITS.batchCapacity.max);
+    if (totalCourseFee <= 0) {
+      toast.error("Enter a realistic total course fee (₹1–₹5,00,000)");
+      return null;
+    }
+    const payload = {
+      ...form,
+      name: form.name.trim().replace(/\s+/g, " "),
+      faculty: form.faculty?.trim() ? sanitizePersonName(form.faculty).trim() : form.faculty,
+      totalCourseFee,
+      capacity,
+    };
     if (isEdit && batch) {
-      const updated = await updateBatch(batch.id, form);
+      const updated = await updateBatch(batch.id, payload);
       toast.success("Batch updated");
       await invalidateAfterBatch(qc);
       return updated;
     }
-    const created = await createBatch(form);
+    const created = await createBatch(payload);
     toast.success("Batch created");
     await invalidateAfterBatch(qc);
     return created;
@@ -256,16 +274,27 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Faculty</Label>
-              <Input value={form.faculty ?? ""} onChange={(e) => setForm({ ...form, faculty: e.target.value })} />
+              <Input
+                value={form.faculty ?? ""}
+                placeholder="e.g. Prof. Deshmukh"
+                onChange={(e) => setForm({ ...form, faculty: sanitizePersonName(e.target.value) })}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Capacity</Label>
               <Input
                 type="number"
+                min={FEE_LIMITS.batchCapacity.min}
+                max={FEE_LIMITS.batchCapacity.max}
                 value={form.capacity}
                 onChange={(e) => {
                   const cleaned = sanitizeNumberInput(e.target);
-                  setForm({ ...form, capacity: cleaned === "" ? 0 : Number(cleaned) });
+                  setForm({
+                    ...form,
+                    capacity: cleaned === ""
+                      ? FEE_LIMITS.batchCapacity.min
+                      : clampFee(Number(cleaned), FEE_LIMITS.batchCapacity.min, FEE_LIMITS.batchCapacity.max),
+                  });
                 }}
               />
             </div>
@@ -273,12 +302,21 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
               <Label>Total course fee (₹)</Label>
               <Input
                 type="number"
+                min={FEE_LIMITS.batchCourseFee.min}
+                max={FEE_LIMITS.batchCourseFee.max}
+                step={100}
                 value={form.totalCourseFee}
                 onChange={(e) => {
                   const cleaned = sanitizeNumberInput(e.target);
-                  setForm({ ...form, totalCourseFee: cleaned === "" ? 0 : Number(cleaned) });
+                  setForm({
+                    ...form,
+                    totalCourseFee: cleaned === ""
+                      ? 0
+                      : clampFee(Number(cleaned), FEE_LIMITS.batchCourseFee.min, FEE_LIMITS.batchCourseFee.max),
+                  });
                 }}
               />
+              <p className="text-[11px] text-muted-foreground">Typical coaching fees: ₹5,000–₹1,50,000 (max ₹5,00,000).</p>
             </div>
             <div className="space-y-1.5">
               <Label>Start date</Label>

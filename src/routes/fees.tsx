@@ -124,34 +124,42 @@ function FeesPage() {
         <Card>
           <div className="divide-y">
             {enriched.map((s) => (
-              <div key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3 md:gap-4 md:px-5">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">{initials(s.name)}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <Link to="/students/$id" params={{ id: s.id }} className="font-medium hover:underline">{s.name}</Link>
-                  <p className="text-xs text-muted-foreground">{s.rollNo} · {s.course}</p>
+              <div
+                key={s.id}
+                className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center md:grid-cols-[minmax(0,1.2fr)_5.5rem_5.5rem_5.5rem_auto] md:gap-4 md:px-5"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">{initials(s.name)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <Link to="/students/$id" params={{ id: s.id }} className="font-medium hover:underline">{s.name}</Link>
+                    <p className="text-xs text-muted-foreground">{s.rollNo} · {s.course}</p>
+                    <p className={`mt-1 text-sm font-display font-bold md:hidden ${s.due > 0 ? "text-destructive" : "text-success"}`}>
+                      {s.due > 0 ? `${inr(s.due)} due` : "Cleared"}
+                    </p>
+                  </div>
                 </div>
-                <div className="hidden md:block text-right">
+                <div className="hidden text-right md:block">
                   <p className="text-xs text-muted-foreground">Billed</p>
                   <p className="font-display font-semibold">{inr(s.billed)}</p>
                 </div>
-                <div className="hidden md:block text-right">
+                <div className="hidden text-right md:block">
                   <p className="text-xs text-muted-foreground">Paid</p>
                   <p className="font-display font-semibold text-success">{inr(s.paidFee)}</p>
                 </div>
-                <div className="text-right">
+                <div className="hidden text-right md:block">
                   <p className="text-xs text-muted-foreground">Due</p>
                   <p className={`font-display font-bold ${s.due > 0 ? "text-destructive" : "text-success"}`}>
                     {s.due > 0 ? inr(s.due) : "Cleared"}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {s.due > 0 && (
+                <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
+                  {s.due > 0 ? (
                     <Button
                       size="sm"
                       title="Send WhatsApp reminder"
-                      className="bg-[#25D366] text-white hover:bg-[#1ebe5b]"
+                      className="h-9 min-w-[7.5rem] flex-1 bg-[#25D366] text-white hover:bg-[#1ebe5b] sm:flex-none"
                       onClick={(e) => {
                         e.preventDefault();
                         const tpl = templates.find((t) => t.id === defaults.reminder) ?? templates.find((t) => t.category === "reminder");
@@ -166,13 +174,17 @@ function FeesPage() {
                     >
                       <MessageCircle className="h-4 w-4" /> WhatsApp
                     </Button>
+                  ) : (
+                    <span className="hidden h-9 min-w-[7.5rem] sm:inline-block" aria-hidden />
                   )}
                   <RecordPaymentDialog
                     defaultStudentId={s.id}
                     students={students}
                     payments={payments}
                     trigger={
-                      <Button size="sm" title="Receive payment"><IndianRupee className="h-4 w-4" /> Receive Payment</Button>
+                      <Button size="sm" title="Receive payment" className="h-9 min-w-[9rem] flex-1 sm:flex-none">
+                        <IndianRupee className="h-4 w-4" /> Receive Payment
+                      </Button>
                     }
                   />
                 </div>

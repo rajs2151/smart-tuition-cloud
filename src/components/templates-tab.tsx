@@ -52,6 +52,10 @@ export function TemplatesTab() {
   }, [templates]);
 
   const newTemplate = async (category: TemplateCategory) => {
+    if (q.data?.offline) {
+      toast.error("Apply the messaging migration before creating templates.");
+      return;
+    }
     const t: MessageTemplate = {
       id: "",
       name: "New Template",
@@ -80,8 +84,20 @@ export function TemplatesTab() {
   }
   if (!defaults) return null;
 
+  const offline = q.data?.offline;
+  const offlineReason = q.data?.offlineReason;
+
   return (
     <div className="space-y-4">
+      {offline && (
+        <div className="rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-foreground">
+          <p className="font-medium">Templates are running offline</p>
+          <p className="mt-1 text-xs opacity-90">
+            {offlineReason ??
+              "The messaging tables are not available on this database yet. WhatsApp still works from built-in copies; edits won’t persist until you apply migration 20260814000000_message_templates_and_comm_logs.sql."}
+          </p>
+        </div>
+      )}
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0">
           <div>
@@ -93,6 +109,7 @@ export function TemplatesTab() {
           <Button
             variant="outline"
             size="sm"
+            disabled={offline}
             onClick={async () => {
               try {
                 await restoreDefaults();
@@ -107,11 +124,17 @@ export function TemplatesTab() {
           </Button>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {(["reminder", "acknowledgement", "admission", "attendance"] as const).map((cat) => (
+          {(["reminder", "acknowledgement", "admission", "attendance"] as const).map((cat) => {
+            const options = grouped[cat];
+            const value = options.some((t) => t.id === defaults[cat])
+              ? defaults[cat]
+              : (options[0]?.id ?? "");
+            return (
             <div key={cat} className="space-y-1.5">
               <Label className="text-xs">{CATEGORY_LABELS[cat]}</Label>
               <Select
-                value={defaults[cat]}
+                value={value || undefined}
+                disabled={offline || options.length === 0}
                 onValueChange={async (v) => {
                   try {
                     await setDefaultTemplate(cat, v);
@@ -121,15 +144,16 @@ export function TemplatesTab() {
                   }
                 }}
               >
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Pick a template" /></SelectTrigger>
                 <SelectContent>
-                  {grouped[cat].map((t) => (
+                  {options.map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name} · {t.language}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          ))}
+            );
+          })}
         </CardContent>
       </Card>
 
@@ -142,7 +166,14 @@ export function TemplatesTab() {
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                     {CATEGORY_LABELS[cat]}
                   </p>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => newTemplate(cat)} aria-label="Add">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    disabled={offline}
+                    onClick={() => newTemplate(cat)}
+                    aria-label="Add"
+                  >
                     <Plus className="h-3.5 w-3.5" />
                   </Button>
                 </div>

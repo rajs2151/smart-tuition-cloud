@@ -28,6 +28,7 @@ import { todayLocalISO } from "@/lib/format";
 import type { Payment, Student } from "@/lib/data/types";
 import { studentsListQuery } from "@/lib/query/lists";
 import { invalidateAfterPayment, prependPayment } from "@/lib/query/invalidate";
+import { FEE_LIMITS, clampFee } from "@/lib/validation/input-rules";
 
 const STUDENTS_QUERY_KEY = studentsListQuery.queryKey;
 
@@ -113,7 +114,13 @@ export function RecordPaymentDialog({
       return toast.error("Payment date cannot be in the future");
     }
 
-    const amountNum = Number(amount);
+    const amountNum = clampFee(Number(amount), FEE_LIMITS.payment.min, FEE_LIMITS.payment.max);
+    if (!Number.isFinite(Number(amount)) || Number(amount) < FEE_LIMITS.payment.min) {
+      return toast.error("Enter a realistic payment amount (at least ₹1)");
+    }
+    if (Number(amount) > FEE_LIMITS.payment.max) {
+      return toast.error("Payment amount looks too high (max ₹5,00,000). Check and try again.");
+    }
     const existing = payments.find(
       (p) =>
         p.studentId === studentId &&
@@ -199,6 +206,9 @@ export function RecordPaymentDialog({
               <Label>Amount (₹)</Label>
               <Input
                 type="number"
+                min={FEE_LIMITS.payment.min}
+                max={FEE_LIMITS.payment.max}
+                step={100}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="5000"

@@ -351,9 +351,11 @@ the full writeup.
 ## Messaging Templates Still `localStorage`-Only
 
 Status:
-Fixed in code (2026-08-14) — migration `20260814000000_message_templates_and_comm_logs.sql`
-must be applied to production before the UI works (`supabase db push`).
-Verify grants via `information_schema` after apply, not from the SQL file.
+Fixed in code (2026-08-20) — migration `20260814000000_message_templates_and_comm_logs.sql`
+must still be applied to production (`supabase db push`). Until then the UI
+loads built-in templates **offline** (WhatsApp works; edits won’t persist)
+and shows a clear banner instead of a hard error. Verify grants via
+`information_schema` after apply, not from the SQL file alone.
 
 Issue:
 `src/lib/messaging/store.ts` persisted templates, defaults, and comm logs
