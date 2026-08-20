@@ -417,6 +417,7 @@ export type Database = {
           created_at: string
           created_by: string
           email: string
+          follow_up_threshold: number
           gst_number: string | null
           id: string
           logo_url: string | null
@@ -448,6 +449,7 @@ export type Database = {
           created_at?: string
           created_by: string
           email?: string
+          follow_up_threshold?: number
           gst_number?: string | null
           id?: string
           logo_url?: string | null
@@ -479,6 +481,7 @@ export type Database = {
           created_at?: string
           created_by?: string
           email?: string
+          follow_up_threshold?: number
           gst_number?: string | null
           id?: string
           logo_url?: string | null
@@ -952,6 +955,7 @@ export type Database = {
           created_at: string
           created_by: string
           email: string
+          follow_up_threshold: number
           gst_number: string | null
           id: string
           logo_url: string | null

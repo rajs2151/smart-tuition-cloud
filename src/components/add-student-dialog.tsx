@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
 
@@ -16,14 +16,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-import { createStudent, updateStudent, listBatches } from "@/lib/data/adapter";
+import { createStudent, updateStudent } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
 import type { Student } from "@/lib/data/types";
-
-const batchesQ = {
-  queryKey: ["all-batches"],
-  queryFn: () => listBatches(),
-};
+import { batchesListQuery } from "@/lib/query/lists";
+import { invalidateAfterStudent } from "@/lib/query/invalidate";
+import {
+  FEE_LIMITS,
+  clampFee,
+  isValidPersonName,
+  parseFeeInput,
+  sanitizePersonName,
+} from "@/lib/validation/input-rules";
 
 export function AddStudentDialog({ trigger, student, open: openProp, onOpenChange: onOpenChangeProp }: {
   trigger?: React.ReactNode;
@@ -34,7 +38,7 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
 }) {
   const qc = useQueryClient();
   const settings = useSettings();
-  const { data: batches } = useSuspenseQuery(batchesQ);
+  const { data: batches = [] } = useQuery({ ...batchesListQuery, placeholderData: keepPreviousData });
   const isEdit = !!student;
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
@@ -98,14 +102,29 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
   };
 
   const submit = async () => {
-    if (!form.name || !form.phone) return toast.error("Student name and phone are required");
+    if (!isValidPersonName(form.name)) {
+      return toast.error("Enter a real student name (letters only, at least 2 characters)");
+    }
+    if (form.parentName.trim() && !isValidPersonName(form.parentName)) {
+      return toast.error("Parent name should use letters only — no numbers or random symbols");
+    }
+    if (!form.phone) return toast.error("Student name and phone are required");
     if (!form.batchId) return toast.error("Select a batch");
-    const total = Number(form.courseFee) + Number(form.admissionFee);
+    const courseFee = clampFee(Number(form.courseFee), FEE_LIMITS.courseFee.min, FEE_LIMITS.courseFee.max);
+    const admissionFee = clampFee(Number(form.admissionFee), FEE_LIMITS.admissionFee.min, FEE_LIMITS.admissionFee.max);
+    const discount = clampFee(Number(form.discount), FEE_LIMITS.discount.min, FEE_LIMITS.discount.max);
+    if (discount > courseFee + admissionFee) {
+      return toast.error("Discount cannot be more than the total fee");
+    }
+    if (courseFee + admissionFee <= 0) {
+      return toast.error("Enter a realistic course or admission fee (₹1–₹5,00,000)");
+    }
+    const total = courseFee + admissionFee;
     const common = {
       rollNo: form.rollNo,
-      name: form.name,
+      name: form.name.trim().replace(/\s+/g, " "),
       phone: form.phone,
-      parentName: form.parentName,
+      parentName: form.parentName.trim().replace(/\s+/g, " "),
       parentPhone: form.parentPhone,
       email: form.email,
       address: form.address,
@@ -115,9 +134,9 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
       board: form.board || undefined,
       medium: form.medium || undefined,
       examCategory: form.examCategory || undefined,
-      courseFee: Number(form.courseFee),
-      admissionFee: Number(form.admissionFee),
-      discount: Number(form.discount),
+      courseFee,
+      admissionFee,
+      discount,
       totalFee: total,
     };
     if (isEdit) {
@@ -134,7 +153,7 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
       });
       toast.success("Student admitted");
     }
-    await qc.invalidateQueries();
+    await invalidateAfterStudent(qc);
     setOpen(false);
   };
 
@@ -163,10 +182,20 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
 
           <TabsContent value="personal" className="space-y-3 pt-4">
             <div className="grid grid-cols-2 gap-3">
-              <FormField label="Student name *" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-              <FormField label="Mobile number *" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
-              <FormField label="Parent name" value={form.parentName} onChange={(v) => setForm({ ...form, parentName: v })} />
-              <FormField label="Parent mobile" value={form.parentPhone} onChange={(v) => setForm({ ...form, parentPhone: v })} />
+              <FormField
+                label="Student name *"
+                value={form.name}
+                onChange={(v) => setForm({ ...form, name: sanitizePersonName(v) })}
+                placeholder="e.g. Aarav Sharma"
+              />
+              <FormField label="Mobile number *" value={form.phone} onChange={(v) => setForm({ ...form, phone: v.replace(/\D/g, "").slice(0, 10) })} placeholder="10-digit mobile" />
+              <FormField
+                label="Parent name"
+                value={form.parentName}
+                onChange={(v) => setForm({ ...form, parentName: sanitizePersonName(v) })}
+                placeholder="e.g. Mrs. Sharma"
+              />
+              <FormField label="Parent mobile" value={form.parentPhone} onChange={(v) => setForm({ ...form, parentPhone: v.replace(/\D/g, "").slice(0, 10) })} placeholder="10-digit mobile" />
               <FormField label="Roll number" value={form.rollNo} onChange={(v) => setForm({ ...form, rollNo: v })} />
               <FormField label="Email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} />
               <div className="space-y-1.5">
@@ -228,9 +257,17 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
                 </div>
                 <Input
                   type="number"
+                  min={FEE_LIMITS.courseFee.min}
+                  max={FEE_LIMITS.courseFee.max}
+                  step={100}
                   value={form.courseFee}
                   disabled={!courseFeeOverride}
-                  onChange={(e) => setForm({ ...form, courseFee: Number(e.target.value) })}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      courseFee: parseFeeInput(e.target.value, FEE_LIMITS.courseFee.min, FEE_LIMITS.courseFee.max),
+                    })
+                  }
                 />
                 {!courseFeeOverride && (
                   <p className="text-xs text-muted-foreground">
@@ -238,15 +275,36 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
                   </p>
                 )}
               </div>
-              <NumField label="Admission fee (₹)" value={form.admissionFee} onChange={(v) => setForm({ ...form, admissionFee: v })} />
-              <NumField label="Discount (₹)" value={form.discount} onChange={(v) => setForm({ ...form, discount: v })} />
-              <NumField label="Installments" value={form.installments} onChange={(v) => setForm({ ...form, installments: v })} />
+              <NumField
+                label="Admission fee (₹)"
+                value={form.admissionFee}
+                min={FEE_LIMITS.admissionFee.min}
+                max={FEE_LIMITS.admissionFee.max}
+                onChange={(v) => setForm({ ...form, admissionFee: v })}
+              />
+              <NumField
+                label="Discount (₹)"
+                value={form.discount}
+                min={FEE_LIMITS.discount.min}
+                max={FEE_LIMITS.discount.max}
+                onChange={(v) => setForm({ ...form, discount: v })}
+              />
+              <NumField
+                label="Installments"
+                value={form.installments}
+                min={FEE_LIMITS.installmentCount.min}
+                max={FEE_LIMITS.installmentCount.max}
+                onChange={(v) => setForm({ ...form, installments: v })}
+              />
             </div>
             <div className="rounded-lg border bg-muted/40 p-3 text-sm">
               <p className="flex justify-between"><span className="text-muted-foreground">Total payable</span>
                 <span className="font-display font-bold">
                   ₹{(Number(form.courseFee) + Number(form.admissionFee) - Number(form.discount)).toLocaleString("en-IN")}
                 </span>
+              </p>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Course fee up to ₹5,00,000 · admission up to ₹1,00,000 · discount cannot exceed total fee.
               </p>
             </div>
           </TabsContent>
@@ -261,19 +319,48 @@ export function AddStudentDialog({ trigger, student, open: openProp, onOpenChang
   );
 }
 
-function FormField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function FormField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
   return (
     <div className="space-y-1.5">
       <Label>{label}</Label>
-      <Input value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
     </div>
   );
 }
-function NumField({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function NumField({
+  label,
+  value,
+  onChange,
+  min = 0,
+  max = 500_000,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+}) {
   return (
     <div className="space-y-1.5">
       <Label>{label}</Label>
-      <Input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        step={label.includes("Installments") ? 1 : 100}
+        value={value}
+        onChange={(e) => onChange(parseFeeInput(e.target.value, min, max))}
+      />
     </div>
   );
 }

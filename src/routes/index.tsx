@@ -1,17 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { lazy, Suspense, useState } from "react";
 import {
   ArrowUpRight,
   IndianRupee,
@@ -36,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AddStudentDialog } from "@/components/add-student-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -46,23 +35,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { listBatches, listPayments, listStudents } from "@/lib/data/adapter";
-import { useSettings } from "@/lib/settings/store";
-import { fmtDate, initials, inr, inrShort } from "@/lib/format";
-import { getMessaging } from "@/lib/messaging/store";
+import { useSettings, setFollowUpThreshold } from "@/lib/settings/store";
+import { fmtDate, initials, inr } from "@/lib/format";
+import { useMessaging, logComm } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
+import { useBatchesList, usePaymentsList, useStudentsList } from "@/lib/query/lists";
 
-const dashboardQuery = {
-  queryKey: ["dashboard"],
-  queryFn: async () => {
-    const [students, payments, batches] = await Promise.all([
-      listStudents(),
-      listPayments(),
-      listBatches(),
-    ]);
-    return { students, payments, batches };
-  },
-};
+const DashboardCharts = lazy(() =>
+  import("@/components/dashboard-charts").then((m) => ({ default: m.DashboardCharts })),
+);
+const DashboardBatchRevenueChart = lazy(() =>
+  import("@/components/dashboard-charts").then((m) => ({ default: m.DashboardBatchRevenueChart })),
+);
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -71,20 +55,24 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "Live overview of collections, dues and admissions for your institute." },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(dashboardQuery),
   component: Dashboard,
 });
 
 function Dashboard() {
-  const { data } = useSuspenseQuery(dashboardQuery);
-  const { institute } = useSettings();
-  const { students, payments, batches } = data;
+  const studentsQ = useStudentsList();
+  const paymentsQ = usePaymentsList();
+  const batchesQ = useBatchesList();
+  const showSkel = studentsQ.isPending || paymentsQ.isPending || batchesQ.isPending;
+  const students = studentsQ.data ?? [];
+  const payments = paymentsQ.data ?? [];
+  const batches = batchesQ.data ?? [];
+  const { institute, followUpThreshold } = useSettings();
+  const { templates, defaults } = useMessaging();
 
   const [studentsModalOpen, setStudentsModalOpen] = useState(false);
   const [collectionModalOpen, setCollectionModalOpen] = useState(false);
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
-  const [followUpThreshold, setFollowUpThreshold] = useState(40);
 
   // Collected is derived from the payments ledger (already loaded on this
   // page), not from the cached student.paidFee column. That column is
@@ -174,7 +162,6 @@ function Dashboard() {
       toast.error("No contact number on file for this student.");
       return;
     }
-    const { templates, defaults } = getMessaging();
     const tpl = templates.find((t) => t.id === defaults.reminder) ?? templates[0];
     if (!tpl) {
       toast.error("No reminder template configured.");
@@ -185,6 +172,16 @@ function Dashboard() {
       buildContext({ student: st, batch, pending: amount, dueDate, extras: { PaidAmount: collectedFor(st.id) } }),
     );
     openWhatsApp(mobile, msg);
+    void logComm({
+      studentId: st.id,
+      studentName: st.name,
+      mobile,
+      templateId: tpl.id,
+      templateName: tpl.name,
+      category: "reminder",
+      message: msg,
+      sentBy: "dashboard",
+    });
   };
 
 
@@ -263,6 +260,10 @@ function Dashboard() {
           </Link>
         </div>
 
+        {showSkel ? (
+          <DashboardSkeletons />
+        ) : (
+          <>
         {/* KPIs */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Kpi
@@ -302,51 +303,17 @@ function Dashboard() {
 
         <div className="grid gap-6 xl:grid-cols-3">
           {/* Revenue chart */}
-          <Card className="xl:col-span-2">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle className="text-base">Collection trend</CardTitle>
-                <p className="text-xs text-muted-foreground">Last 8 months</p>
-              </div>
-              {hasTrendData && (
-                <Badge variant="outline" className="gap-1">
-                  <TrendingUp className="h-3 w-3 text-success" /> Trending up
-                </Badge>
-              )}
-            </CardHeader>
-            <CardContent>
-              {hasTrendData ? (
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={months} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-                      <defs>
-                        <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.4} />
-                          <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                      <XAxis dataKey="m" stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={inrShort} />
-                      <Tooltip
-                        contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }}
-                        formatter={(v: number) => inr(v)}
-                      />
-                      <Area type="monotone" dataKey="collected" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#g1)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="flex h-64 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-                  <TrendingUp className="h-8 w-8 opacity-40" />
-                  <p>No payments recorded in the last 8 months yet.</p>
-                  <p className="text-xs">
-                    The trend will appear here once collections start coming in.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          <Suspense
+            fallback={
+              <Card className="xl:col-span-2">
+                <CardContent className="p-6">
+                  <Skeleton className="h-64 w-full" />
+                </CardContent>
+              </Card>
+            }
+          >
+            <DashboardCharts months={months} hasTrendData={hasTrendData} batchRevenue={batchRevenue} />
+          </Suspense>
 
           {/* Students needing follow-up */}
           <Card>
@@ -355,7 +322,11 @@ function Dashboard() {
                 <CardTitle className="text-base">Needs follow-up</CardTitle>
                 <Select
                   value={String(followUpThreshold)}
-                  onValueChange={(v) => setFollowUpThreshold(Number(v))}
+                  onValueChange={(v) => {
+                    void setFollowUpThreshold(Number(v)).catch((e) =>
+                      toast.error(e instanceof Error ? e.message : "Could not save threshold"),
+                    );
+                  }}
                 >
                   <SelectTrigger className="h-7 w-[84px] text-xs">
                     <SelectValue />
@@ -548,25 +519,19 @@ function Dashboard() {
         </div>
 
         {/* Batch revenue */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Revenue by batch</CardTitle>
-            <p className="text-xs text-muted-foreground">Collected fees per active batch</p>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={batchRevenue} margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                  <XAxis dataKey="name" stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="var(--color-muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={inrShort} />
-                  <Tooltip formatter={(v: number) => inr(v)} contentStyle={{ background: "var(--color-popover)", border: "1px solid var(--color-border)", borderRadius: 12, fontSize: 12 }} />
-                  <Bar dataKey="value" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+        <Suspense
+          fallback={
+            <Card>
+              <CardContent className="p-6">
+                <Skeleton className="h-64 w-full" />
+              </CardContent>
+            </Card>
+          }
+        >
+          <DashboardBatchRevenueChart batchRevenue={batchRevenue} />
+        </Suspense>
+          </>
+        )}
       </main>
 
       <Dialog open={studentsModalOpen} onOpenChange={setStudentsModalOpen}>
@@ -652,6 +617,53 @@ function Dashboard() {
           </div>
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+function DashboardSkeletons() {
+  return (
+    <>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="space-y-3 p-5">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-8 w-36" />
+              <Skeleton className="h-3 w-20" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="xl:col-span-2">
+          <CardHeader>
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="mt-2 h-3 w-24" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-64 w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-4 w-32" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-4 w-48" />
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </CardContent>
+      </Card>
     </>
   );
 }

@@ -26,8 +26,11 @@ import {
 import { listPaymentsByStudent, listStudents, recordPayment } from "@/lib/data/adapter";
 import { todayLocalISO } from "@/lib/format";
 import type { Payment, Student } from "@/lib/data/types";
+import { studentsListQuery } from "@/lib/query/lists";
+import { invalidateAfterPayment, prependPayment } from "@/lib/query/invalidate";
+import { FEE_LIMITS, clampFee } from "@/lib/validation/input-rules";
 
-const STUDENTS_QUERY_KEY = ["students-list"];
+const STUDENTS_QUERY_KEY = studentsListQuery.queryKey;
 
 /**
  * The one Receive Payment dialog used everywhere a payment can be
@@ -111,7 +114,13 @@ export function RecordPaymentDialog({
       return toast.error("Payment date cannot be in the future");
     }
 
-    const amountNum = Number(amount);
+    const amountNum = clampFee(Number(amount), FEE_LIMITS.payment.min, FEE_LIMITS.payment.max);
+    if (!Number.isFinite(Number(amount)) || Number(amount) < FEE_LIMITS.payment.min) {
+      return toast.error("Enter a realistic payment amount (at least ₹1)");
+    }
+    if (Number(amount) > FEE_LIMITS.payment.max) {
+      return toast.error("Payment amount looks too high (max ₹5,00,000). Check and try again.");
+    }
     const existing = payments.find(
       (p) =>
         p.studentId === studentId &&
@@ -152,20 +161,8 @@ export function RecordPaymentDialog({
       setDateError("");
       setDuplicateAckKey(null);
 
-      // Force a real refetch of every cached query, not just active ones.
-      // invalidateQueries() with no options defaults to refetchType:
-      // "active" — any page not currently mounted (Dashboard, Student
-      // List, Student Details opened from elsewhere, ...) would only be
-      // flagged stale, and since their loaders use ensureQueryData (whose
-      // revalidateIfStale option defaults to false), a merely-stale entry
-      // is served as-is on the next visit with no network request. That's
-      // what made Fee Summary/Dashboard totals/Student List progress look
-      // frozen until a hard reload wiped the whole client cache. This is
-      // the one place every payment-affecting mutation in the app goes
-      // through the same fix (see also payment-row-menu.tsx,
-      // import-students-dialog.tsx, recycle-bin.tsx) — no per-page wiring
-      // to remember for whatever the next new page turns out to be.
-      await qc.invalidateQueries({ refetchType: "all" });
+      prependPayment(qc, created);
+      await invalidateAfterPayment(qc);
 
       onRecorded?.(created);
     } catch (e) {
@@ -209,6 +206,9 @@ export function RecordPaymentDialog({
               <Label>Amount (₹)</Label>
               <Input
                 type="number"
+                min={FEE_LIMITS.payment.min}
+                max={FEE_LIMITS.payment.max}
+                step={100}
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="5000"

@@ -24,9 +24,8 @@ import type { Batch, Student } from "@/lib/data/types";
  * absent list instead of leaving the teacher to hunt down each chat
  * manually: one "Send & Next" tap opens the next parent's pre-filled
  * chat, the teacher still taps Send inside WhatsApp themselves. Built as
- * its own one-at-a-time dialog rather than reusing recovery.tsx's
- * stagger-window.open bulk pattern, since that pattern only reliably
- * opens the first tab in most browsers' popup blockers.
+ * its own one-at-a-time dialog. Recovery bulk reminders use the same
+ * Send & next pattern (staggered window.open was removed for TWA safety).
  */
 export function NotifyAbsenteesDialog({
   open,

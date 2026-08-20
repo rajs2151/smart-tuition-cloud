@@ -31,7 +31,7 @@ import {
 import { fmtDate, initials, inr } from "@/lib/format";
 import { exportElementToPdf } from "@/lib/pdf/export";
 import { useSettings } from "@/lib/settings/store";
-import { getMessaging } from "@/lib/messaging/store";
+import { useMessaging, logComm } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { RecordPaymentDialog } from "@/components/record-payment-dialog";
 
@@ -78,6 +78,7 @@ function StudentDetail() {
   });
   const { student: s, payments, batches } = data;
   const batch = batches.find((b) => b.id === s.batchId);
+  const { templates, defaults } = useMessaging();
   // Collected is computed directly from this student's payments (already
   // loaded on this page) rather than trusted from student.paidFee. That
   // column is a cache reconciled by a best-effort background step after
@@ -111,7 +112,6 @@ function StudentDetail() {
       toast.error("No contact number on file for this student.");
       return;
     }
-    const { templates, defaults } = getMessaging();
     const tpl = templates.find((t) => t.id === defaults.reminder) ?? templates[0];
     if (!tpl) {
       toast.error("No message template configured.");
@@ -119,6 +119,16 @@ function StudentDetail() {
     }
     const msg = renderMessage(tpl, buildContext({ student: s, batch, pending: due, extras: { PaidAmount: collected } }));
     openWhatsApp(mobile, msg);
+    void logComm({
+      studentId: s.id,
+      studentName: s.name,
+      mobile,
+      templateId: tpl.id,
+      templateName: tpl.name,
+      category: "reminder",
+      message: msg,
+      sentBy: "student-detail",
+    });
   };
 
   return (

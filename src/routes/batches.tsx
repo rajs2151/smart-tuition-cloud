@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { lazy, Suspense, useState } from "react";
 import { toast } from "sonner";
-import { Plus, BookOpen, GraduationCap, Pencil, Trash2, FileDown } from "lucide-react";
+import { Plus, BookOpen, GraduationCap, Pencil, Trash2, FileDown, Upload } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { RouteErrorComponent } from "@/components/route-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,48 +21,55 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import {
-  createBatch, deleteBatch, listBatches, listPayments, listPaymentsForBatchInRange, listStudents, updateBatch,
+  createBatch, deleteBatch, listPaymentsForBatchInRange, updateBatch,
 } from "@/lib/data/adapter";
 import { useSettings } from "@/lib/settings/store";
 import { inr, fmtDate, todayLocalISO } from "@/lib/format";
 import { sanitizeNumberInput } from "@/lib/number-input";
 import type { Batch, BatchType, Standard, Board, Medium, ExamCategory, Payment, Student } from "@/lib/data/types";
-import { ImportStudentsDialog } from "@/components/import-students-dialog";
-import { Upload } from "lucide-react";
 import { downloadBatchFeeReport } from "@/lib/reports/batch-fee-report";
 import { downloadBatchCollectionReport } from "@/lib/reports/batch-collection-report";
+import { batchesListQuery, paymentsListQuery, studentsListQuery, useBatchesList, usePaymentsList, useStudentsList } from "@/lib/query/lists";
+import { invalidateAfterBatch } from "@/lib/query/invalidate";
+import { FEE_LIMITS, clampFee, isValidPersonName, sanitizePersonName } from "@/lib/validation/input-rules";
 
-const q = {
-  queryKey: ["batches-page"],
-  queryFn: async () => ({
-    batches: await listBatches(),
-    students: await listStudents(),
-    payments: await listPayments(),
-  }),
-};
+const ImportStudentsDialog = lazy(() =>
+  import("@/components/import-students-dialog").then((m) => ({ default: m.ImportStudentsDialog })),
+);
 
 export const Route = createFileRoute("/batches")({
   head: () => ({ meta: [{ title: "Batches — Vidyafee" }] }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(q),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData({ ...studentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...paymentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...batchesListQuery, revalidateIfStale: true }),
+    ]),
   component: BatchesPage,
+  errorComponent: RouteErrorComponent,
 });
 
 function BatchesPage() {
-  const { data } = useSuspenseQuery(q);
+  const studentsQ = useStudentsList();
+  const paymentsQ = usePaymentsList();
+  const batchesQ = useBatchesList();
+  const students = studentsQ.data ?? [];
+  const payments = paymentsQ.data ?? [];
+  const batches = batchesQ.data ?? [];
   const [tab, setTab] = useState<"all" | "standard" | "exam">("all");
 
-  const filtered = data.batches.filter((b) =>
+  const filtered = batches.filter((b) =>
     tab === "all" ? true : tab === "standard" ? b.type === "standard" : b.type === "exam",
   );
 
   const countStudents = (batchId: string) =>
-    data.students.filter((s) => s.batchId === batchId).length;
+    students.filter((s) => s.batchId === batchId).length;
 
   return (
     <>
       <AppHeader
         title="Batches"
-        subtitle={`${data.batches.length} batches · ${data.batches.filter((b) => b.active).length} active`}
+        subtitle={`${batches.length} batches · ${batches.filter((b) => b.active).length} active`}
         actions={<BatchDialog />}
       />
       <main className="flex-1 space-y-4 p-4 md:p-6">
@@ -120,7 +128,7 @@ function BatchesPage() {
                     </div>
 
                     <DownloadCollectionReportButton batch={b} />
-                    <DownloadFeeReportButton batch={b} students={data.students} payments={data.payments} />
+                    <DownloadFeeReportButton batch={b} students={students} payments={payments} />
                   </CardContent>
                 </Card>
               ))}
@@ -144,7 +152,7 @@ function DeleteBatchButton({ id }: { id: string }) {
       onClick={async () => {
         if (!confirm("Delete this batch?")) return;
         await deleteBatch(id);
-        await qc.invalidateQueries();
+        await invalidateAfterBatch(qc);
         toast.success("Batch deleted");
       }}
     >
@@ -172,22 +180,39 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
   const [importFor, setImportFor] = useState<Batch | null>(null);
 
   const persist = async (): Promise<Batch | null> => {
-    if (!form.name) { toast.error("Batch name is required"); return null; }
+    if (!form.name.trim()) { toast.error("Batch name is required"); return null; }
+    if (form.faculty?.trim() && !isValidPersonName(form.faculty)) {
+      toast.error("Faculty name should use letters only — no numbers or random symbols");
+      return null;
+    }
     if (form.type === "standard" && (!form.standard || !form.board || !form.medium)) {
       toast.error("Pick standard, board and medium"); return null;
     }
     if (form.type === "exam" && !form.examCategory) {
       toast.error("Pick an exam category"); return null;
     }
+    const totalCourseFee = clampFee(form.totalCourseFee, FEE_LIMITS.batchCourseFee.min, FEE_LIMITS.batchCourseFee.max);
+    const capacity = clampFee(form.capacity, FEE_LIMITS.batchCapacity.min, FEE_LIMITS.batchCapacity.max);
+    if (totalCourseFee <= 0) {
+      toast.error("Enter a realistic total course fee (₹1–₹5,00,000)");
+      return null;
+    }
+    const payload = {
+      ...form,
+      name: form.name.trim().replace(/\s+/g, " "),
+      faculty: form.faculty?.trim() ? sanitizePersonName(form.faculty).trim() : form.faculty,
+      totalCourseFee,
+      capacity,
+    };
     if (isEdit && batch) {
-      const updated = await updateBatch(batch.id, form);
+      const updated = await updateBatch(batch.id, payload);
       toast.success("Batch updated");
-      await qc.invalidateQueries({ refetchType: "all" });
+      await invalidateAfterBatch(qc);
       return updated;
     }
-    const created = await createBatch(form);
+    const created = await createBatch(payload);
     toast.success("Batch created");
-    await qc.invalidateQueries();
+    await invalidateAfterBatch(qc);
     return created;
   };
 
@@ -253,16 +278,27 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Faculty</Label>
-              <Input value={form.faculty ?? ""} onChange={(e) => setForm({ ...form, faculty: e.target.value })} />
+              <Input
+                value={form.faculty ?? ""}
+                placeholder="e.g. Prof. Deshmukh"
+                onChange={(e) => setForm({ ...form, faculty: sanitizePersonName(e.target.value) })}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Capacity</Label>
               <Input
                 type="number"
+                min={FEE_LIMITS.batchCapacity.min}
+                max={FEE_LIMITS.batchCapacity.max}
                 value={form.capacity}
                 onChange={(e) => {
                   const cleaned = sanitizeNumberInput(e.target);
-                  setForm({ ...form, capacity: cleaned === "" ? 0 : Number(cleaned) });
+                  setForm({
+                    ...form,
+                    capacity: cleaned === ""
+                      ? FEE_LIMITS.batchCapacity.min
+                      : clampFee(Number(cleaned), FEE_LIMITS.batchCapacity.min, FEE_LIMITS.batchCapacity.max),
+                  });
                 }}
               />
             </div>
@@ -270,12 +306,21 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
               <Label>Total course fee (₹)</Label>
               <Input
                 type="number"
+                min={FEE_LIMITS.batchCourseFee.min}
+                max={FEE_LIMITS.batchCourseFee.max}
+                step={100}
                 value={form.totalCourseFee}
                 onChange={(e) => {
                   const cleaned = sanitizeNumberInput(e.target);
-                  setForm({ ...form, totalCourseFee: cleaned === "" ? 0 : Number(cleaned) });
+                  setForm({
+                    ...form,
+                    totalCourseFee: cleaned === ""
+                      ? 0
+                      : clampFee(Number(cleaned), FEE_LIMITS.batchCourseFee.min, FEE_LIMITS.batchCourseFee.max),
+                  });
                 }}
               />
+              <p className="text-[11px] text-muted-foreground">Typical coaching fees: ₹5,000–₹1,50,000 (max ₹5,00,000).</p>
             </div>
             <div className="space-y-1.5">
               <Label>Start date</Label>
@@ -301,11 +346,13 @@ function BatchDialog({ batch, trigger }: { batch?: Batch; trigger?: React.ReactN
         </DialogFooter>
       </DialogContent>
       {importFor ? (
-        <ImportStudentsDialog
-          batch={importFor}
-          open={!!importFor}
-          onOpenChange={(v) => { if (!v) setImportFor(null); }}
-        />
+        <Suspense fallback={null}>
+          <ImportStudentsDialog
+            batch={importFor}
+            open={!!importFor}
+            onOpenChange={(v) => { if (!v) setImportFor(null); }}
+          />
+        </Suspense>
       ) : null}
     </Dialog>
   );
@@ -414,10 +461,14 @@ function ImportButton({ batch }: { batch: Batch }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button size="icon" variant="ghost" onClick={() => setOpen(true)} title="Import students">
+      <Button size="icon" variant="ghost" className="h-11 w-11" onClick={() => setOpen(true)} title="Import students">
         <Upload className="h-3.5 w-3.5" />
       </Button>
-      {open ? <ImportStudentsDialog batch={batch} open={open} onOpenChange={setOpen} /> : null}
+      {open ? (
+        <Suspense fallback={null}>
+          <ImportStudentsDialog batch={batch} open={open} onOpenChange={setOpen} />
+        </Suspense>
+      ) : null}
     </>
   );
 }

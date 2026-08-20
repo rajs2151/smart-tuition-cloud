@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   AppSettings,
@@ -57,11 +58,14 @@ export const DEFAULT_ATTENDANCE: AttendanceSettings = {
   lockTime: null,
 };
 
+export const DEFAULT_FOLLOW_UP_THRESHOLD = 40;
+
 export const DEFAULT_SETTINGS: AppSettings = {
   institute: DEFAULT_INSTITUTE,
   receipt: DEFAULT_RECEIPT,
   master: DEFAULT_MASTER,
   attendance: DEFAULT_ATTENDANCE,
+  followUpThreshold: DEFAULT_FOLLOW_UP_THRESHOLD,
 };
 
 let state: AppSettings = DEFAULT_SETTINGS;
@@ -108,6 +112,7 @@ export function hydrateSettingsFromDb(row: any) {
       language: (row.attendance_language ?? DEFAULT_ATTENDANCE.language) as AttendanceSettings["language"],
       lockTime: row.attendance_lock_time ?? null,
     },
+    followUpThreshold: Number(row.follow_up_threshold ?? DEFAULT_FOLLOW_UP_THRESHOLD) || DEFAULT_FOLLOW_UP_THRESHOLD,
   };
   emit();
 }
@@ -191,6 +196,18 @@ export async function setReceiptConfig(patch: Partial<ReceiptConfig>) {
   }
 }
 
+export async function setFollowUpThreshold(value: number) {
+  const previous = state.followUpThreshold;
+  state = { ...state, followUpThreshold: value };
+  emit();
+  const ok = await pushInstituteUpdate({ follow_up_threshold: value });
+  if (!ok) {
+    state = { ...state, followUpThreshold: previous };
+    emit();
+    throw new Error("Couldn't save follow-up threshold. Please try again.");
+  }
+}
+
 export async function setAttendanceSettings(patch: Partial<AttendanceSettings>) {
   const previous = state.attendance;
   state = { ...state, attendance: { ...state.attendance, ...patch } };
@@ -228,15 +245,17 @@ export async function setMaster(patch: Partial<MasterSettings>) {
 export function addMasterValue(key: keyof MasterSettings, value: string) {
   const list = state.master[key] as string[];
   if (!value.trim() || list.includes(value)) return;
-  void setMaster({ [key]: [...list, value] } as Partial<MasterSettings>).catch((e) =>
-    console.error("[settings] addMasterValue failed", e),
-  );
+  void setMaster({ [key]: [...list, value] } as Partial<MasterSettings>).catch((e) => {
+    console.error("[settings] addMasterValue failed", e);
+    toast.error(e instanceof Error ? e.message : "Couldn't save master list.");
+  });
 }
 export function removeMasterValue(key: keyof MasterSettings, value: string) {
   const list = state.master[key] as string[];
-  void setMaster({ [key]: list.filter((v) => v !== value) } as Partial<MasterSettings>).catch((e) =>
-    console.error("[settings] removeMasterValue failed", e),
-  );
+  void setMaster({ [key]: list.filter((v) => v !== value) } as Partial<MasterSettings>).catch((e) => {
+    console.error("[settings] removeMasterValue failed", e);
+    toast.error(e instanceof Error ? e.message : "Couldn't update master list.");
+  });
 }
 
 /**
@@ -246,9 +265,10 @@ export function removeMasterValue(key: keyof MasterSettings, value: string) {
  */
 export function nextReceiptNumber(): string {
   const n = state.receipt.nextNumber;
-  void setReceiptConfig({ nextNumber: n + 1 }).catch((e) =>
-    console.error("[settings] nextReceiptNumber save failed", e),
-  );
+  void setReceiptConfig({ nextNumber: n + 1 }).catch((e) => {
+    console.error("[settings] nextReceiptNumber save failed", e);
+    toast.error("Couldn't advance receipt number. Refresh and try again.");
+  });
   return `${state.receipt.prefix}-${String(n).padStart(4, "0")}`;
 }
 

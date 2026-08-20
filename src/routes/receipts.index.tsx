@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Search, Receipt as ReceiptIcon, Download, ChevronRight } from "lucide-react";
 
@@ -9,16 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-import { listPayments, listStudents } from "@/lib/data/adapter";
 import { fmtDate, inr } from "@/lib/format";
-
-const q = {
-  queryKey: ["receipts-page"],
-  queryFn: async () => ({
-    students: await listStudents(),
-    payments: await listPayments(),
-  }),
-};
+import { paymentsListQuery, studentsListQuery, usePaymentsList, useStudentsList } from "@/lib/query/lists";
 
 export const Route = createFileRoute("/receipts/")({
   head: () => ({
@@ -27,34 +18,42 @@ export const Route = createFileRoute("/receipts/")({
       { name: "description", content: "All receipts, ready to print, download or share on WhatsApp." },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(q),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData({ ...studentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...paymentsListQuery, revalidateIfStale: true }),
+    ]),
   component: ReceiptsPage,
 });
 
 function ReceiptsPage() {
-  const { data } = useSuspenseQuery(q);
+  const studentsQ = useStudentsList();
+  const paymentsQ = usePaymentsList();
+  const students = studentsQ.data ?? [];
+  const payments = paymentsQ.data ?? [];
+  const fetching = studentsQ.isFetching || paymentsQ.isFetching;
   const [search, setSearch] = useState("");
 
   const rows = useMemo(() => {
-    return data.payments
+    return payments
       .map((p) => ({
         ...p,
-        student: data.students.find((s) => s.id === p.studentId),
+        student: students.find((s) => s.id === p.studentId),
       }))
       .filter((p) => {
         if (!search) return true;
         const q = search.toLowerCase();
         return p.receiptNo.toLowerCase().includes(q) || (p.student?.name.toLowerCase().includes(q) ?? false);
       });
-  }, [data, search]);
+  }, [payments, students, search]);
 
   return (
     <>
-      <AppHeader title="Receipts" subtitle={`${data.payments.length} total receipts generated`} />
-      <main className="flex-1 space-y-4 p-4 md:p-6">
+      <AppHeader title="Receipts" subtitle={`${payments.length} total receipts generated`} />
+      <main className={`flex-1 space-y-4 p-4 md:p-6 ${fetching ? "opacity-70 transition-opacity" : ""}`}>
         <Card>
-          <CardContent className="flex flex-wrap items-center gap-3 p-4">
-            <div className="relative flex-1 min-w-[220px]">
+          <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center">
+            <div className="relative w-full min-w-0 flex-1 sm:min-w-[220px]">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search by receipt no or student…"

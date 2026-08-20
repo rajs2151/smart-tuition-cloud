@@ -24,19 +24,20 @@ import {
 import { updatePayment, voidPayment, listPaymentsByStudent } from "@/lib/data/adapter";
 import { useSession } from "@/lib/auth/session";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
-import { getMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
+import { useMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
 import type { Payment, Student } from "@/lib/data/types";
+import { invalidateAfterPayment } from "@/lib/query/invalidate";
 
 export function PaymentRowMenu({ payment, student }: { payment: Payment; student: Student | undefined }) {
   const qc = useQueryClient();
   const session = useSession();
+  const { templates, defaults } = useMessaging();
   const isOwner = session.role === "owner";
   const [editOpen, setEditOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
 
   const sendWhatsAppReceipt = async () => {
     if (!student) return;
-    const { templates, defaults } = getMessaging();
     const billed = student.totalFee - student.discount;
     let paid = 0;
     try {
@@ -66,7 +67,7 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
     try {
       await voidPayment(payment.id);
       toast.success("Payment voided");
-      await qc.invalidateQueries({ refetchType: "all" });
+      await invalidateAfterPayment(qc);
       setVoidOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not void payment");
@@ -77,7 +78,7 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Payment actions">
+          <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Payment actions">
             <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
@@ -146,7 +147,7 @@ function EditPaymentDialog({ payment, open, onOpenChange }: {
     try {
       await updatePayment(payment.id, { amount: Number(amount), date, mode, note });
       toast.success("Payment updated");
-      await qc.invalidateQueries({ refetchType: "all" });
+      await invalidateAfterPayment(qc);
       onOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update payment");

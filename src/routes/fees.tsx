@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Search, IndianRupee, MessageCircle } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { RouteErrorComponent } from "@/components/route-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,20 +12,12 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-import { listPayments, listStudents } from "@/lib/data/adapter";
 import { fmtDate, initials, inr, todayLocalISO } from "@/lib/format";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
-import { getMessaging, logComm } from "@/lib/messaging/store";
+import { logComm, useMessaging } from "@/lib/messaging/store";
 import { PaymentRowMenu } from "@/components/payment-row-menu";
 import { RecordPaymentDialog } from "@/components/record-payment-dialog";
-
-const q = {
-  queryKey: ["fees-page"],
-  queryFn: async () => ({
-    students: await listStudents(),
-    payments: await listPayments(),
-  }),
-};
+import { paymentsListQuery, studentsListQuery, usePaymentsList, useStudentsList } from "@/lib/query/lists";
 
 export const Route = createFileRoute("/fees")({
   head: () => ({
@@ -34,12 +26,22 @@ export const Route = createFileRoute("/fees")({
       { name: "description", content: "Track collections, record payments and follow up on pending dues." },
     ],
   }),
-  loader: ({ context }) => context.queryClient.ensureQueryData(q),
+  loader: ({ context }) =>
+    Promise.all([
+      context.queryClient.ensureQueryData({ ...studentsListQuery, revalidateIfStale: true }),
+      context.queryClient.ensureQueryData({ ...paymentsListQuery, revalidateIfStale: true }),
+    ]),
   component: FeesPage,
+  errorComponent: RouteErrorComponent,
 });
 
 function FeesPage() {
-  const { data } = useSuspenseQuery(q);
+  const studentsQ = useStudentsList();
+  const paymentsQ = usePaymentsList();
+  const students = studentsQ.data ?? [];
+  const payments = paymentsQ.data ?? [];
+  const fetching = studentsQ.isFetching || paymentsQ.isFetching;
+  const { templates, defaults } = useMessaging();
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"all" | "due" | "paid">("all");
 
@@ -51,15 +53,15 @@ function FeesPage() {
   // the Student Details page, which was fixed the same way.
   const collectedByStudent = useMemo(() => {
     const map = new Map<string, number>();
-    for (const p of data.payments) {
+    for (const p of payments) {
       if (p.voided) continue;
       map.set(p.studentId, (map.get(p.studentId) ?? 0) + p.amount);
     }
     return map;
-  }, [data.payments]);
+  }, [payments]);
 
   const enriched = useMemo(() => {
-    return data.students
+    return students
       .map((s) => {
         const paidFee = collectedByStudent.get(s.id) ?? 0;
         const billed = s.totalFee - s.discount;
@@ -74,25 +76,25 @@ function FeesPage() {
         return s.name.toLowerCase().includes(q) || s.rollNo.toLowerCase().includes(q);
       })
       .sort((a, b) => b.due - a.due);
-  }, [data.students, collectedByStudent, search, tab]);
+  }, [students, collectedByStudent, search, tab]);
 
   const totals = useMemo(() => {
-    const billed = data.students.reduce((a, s) => a + (s.totalFee - s.discount), 0);
-    const collected = data.payments.filter((p) => !p.voided).reduce((a, p) => a + p.amount, 0);
+    const billed = students.reduce((a, s) => a + (s.totalFee - s.discount), 0);
+    const collected = payments.filter((p) => !p.voided).reduce((a, p) => a + p.amount, 0);
     const today = todayLocalISO();
-    const todayCol = data.payments.filter((p) => p.date === today && !p.voided).reduce((a, p) => a + p.amount, 0);
+    const todayCol = payments.filter((p) => p.date === today && !p.voided).reduce((a, p) => a + p.amount, 0);
     return { billed, collected, due: billed - collected, todayCol };
-  }, [data]);
+  }, [students, payments]);
 
   return (
     <>
       <AppHeader
         title="Fee Management"
         subtitle="Track collections, dues and record new payments"
-        actions={<RecordPaymentDialog students={data.students} payments={data.payments} />}
+        actions={<RecordPaymentDialog students={students} payments={payments} />}
       />
 
-      <main className="flex-1 space-y-4 p-4 md:p-6">
+      <main className={`flex-1 space-y-4 p-4 md:p-6 ${fetching ? "opacity-70 transition-opacity" : ""}`}>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MiniStat label="Total billed" value={inr(totals.billed)} />
           <MiniStat label="Collected" value={inr(totals.collected)} tone="success" />
@@ -124,37 +126,44 @@ function FeesPage() {
         <Card>
           <div className="divide-y">
             {enriched.map((s) => (
-              <div key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3 md:gap-4 md:px-5">
-                <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">{initials(s.name)}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <Link to="/students/$id" params={{ id: s.id }} className="font-medium hover:underline">{s.name}</Link>
-                  <p className="text-xs text-muted-foreground">{s.rollNo} · {s.course}</p>
+              <div
+                key={s.id}
+                className="grid grid-cols-1 gap-3 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center md:grid-cols-[minmax(0,1.2fr)_5.5rem_5.5rem_5.5rem_auto] md:gap-4 md:px-5"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">{initials(s.name)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <Link to="/students/$id" params={{ id: s.id }} className="font-medium hover:underline">{s.name}</Link>
+                    <p className="text-xs text-muted-foreground">{s.rollNo} · {s.course}</p>
+                    <p className={`mt-1 text-sm font-display font-bold md:hidden ${s.due > 0 ? "text-destructive" : "text-success"}`}>
+                      {s.due > 0 ? `${inr(s.due)} due` : "Cleared"}
+                    </p>
+                  </div>
                 </div>
-                <div className="hidden md:block text-right">
+                <div className="hidden text-right md:block">
                   <p className="text-xs text-muted-foreground">Billed</p>
                   <p className="font-display font-semibold">{inr(s.billed)}</p>
                 </div>
-                <div className="hidden md:block text-right">
+                <div className="hidden text-right md:block">
                   <p className="text-xs text-muted-foreground">Paid</p>
                   <p className="font-display font-semibold text-success">{inr(s.paidFee)}</p>
                 </div>
-                <div className="text-right">
+                <div className="hidden text-right md:block">
                   <p className="text-xs text-muted-foreground">Due</p>
                   <p className={`font-display font-bold ${s.due > 0 ? "text-destructive" : "text-success"}`}>
                     {s.due > 0 ? inr(s.due) : "Cleared"}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {s.due > 0 && (
+                <div className="flex w-full items-center gap-2 sm:w-auto sm:justify-end">
+                  {s.due > 0 ? (
                     <Button
                       size="sm"
                       title="Send WhatsApp reminder"
-                      className="bg-[#25D366] text-white hover:bg-[#1ebe5b]"
+                      className="h-9 min-w-[7.5rem] flex-1 bg-[#25D366] text-white hover:bg-[#1ebe5b] sm:flex-none"
                       onClick={(e) => {
                         e.preventDefault();
-                        const { templates, defaults } = getMessaging();
                         const tpl = templates.find((t) => t.id === defaults.reminder) ?? templates.find((t) => t.category === "reminder");
                         const mobile = pickMobile(s);
                         if (!mobile) return toast.error("No mobile on file");
@@ -167,13 +176,17 @@ function FeesPage() {
                     >
                       <MessageCircle className="h-4 w-4" /> WhatsApp
                     </Button>
+                  ) : (
+                    <span className="hidden h-9 min-w-[7.5rem] sm:inline-block" aria-hidden />
                   )}
                   <RecordPaymentDialog
                     defaultStudentId={s.id}
-                    students={data.students}
-                    payments={data.payments}
+                    students={students}
+                    payments={payments}
                     trigger={
-                      <Button size="sm" title="Receive payment"><IndianRupee className="h-4 w-4" /> Receive Payment</Button>
+                      <Button size="sm" title="Receive payment" className="h-9 min-w-[9rem] flex-1 sm:flex-none">
+                        <IndianRupee className="h-4 w-4" /> Receive Payment
+                      </Button>
                     }
                   />
                 </div>
@@ -187,8 +200,8 @@ function FeesPage() {
             <CardTitle className="text-base">Recent payments</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
-            {data.payments.slice(0, 8).map((p) => {
-              const st = data.students.find((s) => s.id === p.studentId);
+            {payments.slice(0, 8).map((p) => {
+              const st = students.find((s) => s.id === p.studentId);
               return (
                 <div
                   key={p.id}

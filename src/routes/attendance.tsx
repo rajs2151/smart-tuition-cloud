@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQueryClient, useSuspenseQuery, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useMutation, useQueryClient, useSuspenseQuery, useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CalendarCheck, CalendarOff, Ban, MessageCircle, Lock } from "lucide-react";
+import { CalendarCheck, CalendarOff, Ban, MessageCircle, Lock, Loader2 } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { RouteErrorComponent } from "@/components/route-error";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,26 +40,21 @@ import { todayLocalISO } from "@/lib/format";
 import type { AttendanceSession, Batch, Student } from "@/lib/data/types";
 
 const pageQuery = {
-  queryKey: ["attendance-page"],
-  queryFn: async () => ({
-    batches: await listBatches(),
-    // includeDeleted: true — MarkAttendanceTab (the live grid) already
-    // applies its own `!s.deleted` filter client-side, so this doesn't
-    // change what's shown for taking attendance. But it DOES matter for
-    // Reports/Notify: a deleted student's attendance_absences rows still
-    // reference their student_id, and those views need to resolve that
-    // id back to a Student object to render historical rows. If this
-    // query excluded deleted students, that lookup would fail and those
-    // rows would silently vanish from history — which is the opposite of
-    // what PRD §7 asks for ("historical absence records stay intact").
-    students: await listStudents(true),
-  }),
+  queryKey: ["attendance-page"] as const,
+  queryFn: async () => {
+    const [batches, students] = await Promise.all([
+      listBatches(),
+      listStudents(true),
+    ]);
+    return { batches, students };
+  },
 };
 
 export const Route = createFileRoute("/attendance")({
   head: () => ({ meta: [{ title: "Attendance — Vidyafee" }] }),
   loader: ({ context }) => context.queryClient.ensureQueryData(pageQuery),
   component: AttendancePage,
+  errorComponent: RouteErrorComponent,
 });
 
 function AttendancePage() {
@@ -164,11 +160,40 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
     queryKey: ["attendance", batch.id, sessionDate],
     queryFn: () => loadAttendanceForBatch(batch.id, sessionDate),
   });
+  const attendanceKey = ["attendance", batch.id, sessionDate] as const;
 
   const [absentIds, setAbsentIds] = useState<Set<string>>(new Set());
+  const localDirty = useRef(false);
   useEffect(() => {
-    if (attendanceQuery.data) setAbsentIds(new Set(attendanceQuery.data.absentStudentIds));
+    localDirty.current = false;
+  }, [sessionDate, batch.id]);
+  useEffect(() => {
+    if (!localDirty.current && attendanceQuery.data) {
+      setAbsentIds(new Set(attendanceQuery.data.absentStudentIds));
+    }
   }, [attendanceQuery.data]);
+
+  const persist = useMutation({
+    mutationFn: (ids: string[]) => saveAttendance(batch, sessionDate, ids),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: attendanceKey });
+      const previous = qc.getQueryData<typeof attendanceQuery.data>(attendanceKey);
+      qc.setQueryData(attendanceKey, (old: typeof attendanceQuery.data) =>
+        old ? { ...old, absentStudentIds: ids } : old,
+      );
+      return { previous };
+    },
+    onError: (err, _ids, ctx) => {
+      if (ctx?.previous) qc.setQueryData(attendanceKey, ctx.previous);
+      setAbsentIds(new Set(ctx?.previous?.absentStudentIds ?? []));
+      localDirty.current = false;
+      toast.error(err instanceof Error ? err.message : "Could not save attendance.");
+    },
+    onSuccess: () => {
+      localDirty.current = false;
+    },
+  });
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
@@ -188,15 +213,23 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
       const next = new Set(prev);
       if (next.has(studentId)) next.delete(studentId);
       else next.add(studentId);
+      const ids = [...next];
+      localDirty.current = true;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => persist.mutate(ids), 400);
       return next;
     });
   };
 
   const save = async () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
     setSaving(true);
     try {
-      await saveAttendance(batch, sessionDate, [...absentIds]);
-      await qc.invalidateQueries({ queryKey: ["attendance", batch.id, sessionDate] });
+      const ids = [...absentIds];
+      await persist.mutateAsync(ids);
       const absentStudents = students.filter((s) => absentIds.has(s.id));
       setLastAbsentStudents(absentStudents);
       if (absentStudents.length > 0) {
@@ -209,8 +242,8 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
       } else {
         toast.success("Attendance saved · everyone present");
       }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save attendance.");
+    } catch {
+      /* persist.onError already toasted */
     } finally {
       setSaving(false);
     }
@@ -297,9 +330,29 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
             No attendance recorded for this session.
           </CardContent>
         </Card>
+      ) : attendanceQuery.isLoading ? (
+        <Card>
+          <CardContent className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading attendance…
+          </CardContent>
+        </Card>
+      ) : attendanceQuery.isError ? (
+        <Card>
+          <CardContent className="space-y-3 p-8 text-center">
+            <p className="text-sm text-destructive">
+              {attendanceQuery.error instanceof Error
+                ? attendanceQuery.error.message
+                : "Could not load attendance for this date."}
+            </p>
+            <Button variant="outline" onClick={() => void attendanceQuery.refetch()}>
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <Card>
-          <CardContent className="p-4">
+          <CardContent className={`p-4 ${attendanceQuery.isFetching ? "opacity-70 transition-opacity" : ""}`}>
             <AttendanceGrid
               students={students}
               absentIds={absentIds}

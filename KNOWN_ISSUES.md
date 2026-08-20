@@ -262,17 +262,20 @@ pass, not a quick fix.
 ## Pending Migrations Not Yet Applied to Production
 
 Status:
-Messaging migration pending apply (`20260814000000_message_templates_and_comm_logs.sql`)
+**Action required on production** — apply with `supabase db push` (see [`docs/TWA-SETUP.md`](docs/TWA-SETUP.md)).
+
+Code + migration files are ready on this branch:
+
+- `20260814000000_message_templates_and_comm_logs.sql`
+- `20260814230000_follow_up_threshold.sql`
+- `20260820120000_is_member_requires_active_access.sql` (disabled members cannot pass RLS)
 
 Notes:
-All 15 migrations on `main` (up through
-`20260731000000_expenses_system.sql`) are confirmed applied to the live
-Supabase project. The messaging tables migration is on
-`fix/known-issues-open` and must be applied with `supabase db push`
-after merge (or from this branch) — verify
+All migrations through `20260731000000_expenses_system.sql` were previously
+confirmed applied. Messaging / follow-up / `is_member` tighten still need a
+live `db push` (or SQL Editor apply in filename order). After push, verify
 `information_schema.role_table_grants` for `authenticated` vs `anon` /
-`PUBLIC` rather than trusting the SQL file. No live student/institute
-rows are mutated by that migration.
+`PUBLIC`. This cannot be completed from CI without production credentials.
 
 ---
 
@@ -301,15 +304,14 @@ lying with the cache. `students.paid_fee` is still written by
 ## Follow-up Threshold (Dashboard) Not Persisted
 
 Status:
-Working as built, may need revisiting
+Fixed (2026-08-14) — stored on `institutes.follow_up_threshold` (default 40)
 
 Issue:
-The "Students Needing Follow-up" card's threshold (default ≤40%
-collected) is a plain client-side Select, reset to the default every
-session/page load — not stored per-institute. Built this way
-deliberately (a settings field + migration felt disproportionate to
-what was asked), but worth revisiting if owners want their chosen
-threshold to persist across visits/devices.
+The "Students Needing Follow-up" card's threshold is now persisted per
+institute (migration `20260814230000_follow_up_threshold.sql`). Changing
+the Select writes the column; owners who pick ≤20% keep that choice
+across visits and devices. Apply the migration before the write will
+succeed in production.
 
 ---
 
@@ -351,9 +353,11 @@ the full writeup.
 ## Messaging Templates Still `localStorage`-Only
 
 Status:
-Fixed in code (2026-08-14) — migration `20260814000000_message_templates_and_comm_logs.sql`
-must be applied to production before the UI works (`supabase db push`).
-Verify grants via `information_schema` after apply, not from the SQL file.
+Fixed in code (2026-08-20) — migration `20260814000000_message_templates_and_comm_logs.sql`
+must still be applied to production (`supabase db push`). Until then the UI
+loads built-in templates **offline** (WhatsApp works; edits won’t persist)
+and shows a clear banner instead of a hard error. Verify grants via
+`information_schema` after apply, not from the SQL file alone.
 
 Issue:
 `src/lib/messaging/store.ts` persisted templates, defaults, and comm logs

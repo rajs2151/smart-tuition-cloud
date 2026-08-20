@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
+import { RouteErrorComponent } from "@/components/route-error";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,12 @@ import { fmtDate, inr, inrShort, todayLocalISO } from "@/lib/format";
 // components/attendance/reports/batch-day-list.tsx for "show me
 // everything, no range picker" browsing.
 const GENESIS_DATE = "2000-01-01";
+const EXPENSE_TABS = ["dashboard", "list", "profit", "categories", "reports"] as const;
+type ExpenseTab = (typeof EXPENSE_TABS)[number];
+
+function parseExpenseTab(value: unknown): ExpenseTab {
+  return EXPENSE_TABS.includes(value as ExpenseTab) ? (value as ExpenseTab) : "dashboard";
+}
 
 const pageQuery = {
   queryKey: ["expenses-page"],
@@ -76,7 +83,11 @@ export const Route = createFileRoute("/expenses")({
     ],
   }),
   loader: ({ context }) => context.queryClient.ensureQueryData(pageQuery),
+  validateSearch: (raw: Record<string, unknown>): { tab: ExpenseTab } => ({
+    tab: parseExpenseTab(raw.tab),
+  }),
   component: ExpensesPage,
+  errorComponent: RouteErrorComponent,
 });
 
 const MODES: ExpensePaymentMode[] = ["Cash", "UPI", "Bank Transfer", "Cheque"];
@@ -84,7 +95,8 @@ const MODES: ExpensePaymentMode[] = ["Cash", "UPI", "Bank Transfer", "Cheque"];
 function ExpensesPage() {
   const { data } = useSuspenseQuery(pageQuery);
   const { expenses, categories } = data;
-  const [tab, setTab] = useState("dashboard");
+  const { tab } = Route.useSearch();
+  const navigate = Route.useNavigate();
 
   const today = todayLocalISO();
   const thisMonth = today.slice(0, 7);
@@ -113,7 +125,12 @@ function ExpensesPage() {
           <Stat label="All Time" value={inr(totals.total)} icon={<IndianRupee className="h-4 w-4" />} tone="success" />
         </div>
 
-        <Tabs value={tab} onValueChange={setTab}>
+        <Tabs
+          value={tab}
+          onValueChange={(v) =>
+            void navigate({ search: { tab: parseExpenseTab(v) }, replace: true })
+          }
+        >
           {/* Five labels overflow a phone-width row; without horizontal
               scroll the page grows wider than the viewport and mobile
               browsers shrink ("zoom out") the whole Expenses screen. */}

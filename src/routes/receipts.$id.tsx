@@ -13,7 +13,7 @@ import { fmtDate, inr } from "@/lib/format";
 import { useSettings } from "@/lib/settings/store";
 import { getEffectiveReceiptContact } from "@/lib/settings/receipt-contact";
 import { exportElementToPdf } from "@/lib/pdf/export";
-import { getMessaging } from "@/lib/messaging/store";
+import { useMessaging, logComm } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { toast } from "sonner";
 
@@ -64,6 +64,7 @@ function ReceiptDetail() {
   const { payment, student, batch, totalPaid } = data;
   const receiptRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+  const { templates, defaults } = useMessaging();
   if (!student) return null;
 
   const contact = getEffectiveReceiptContact(institute, cfg);
@@ -88,7 +89,6 @@ function ReceiptDetail() {
       toast.error("No contact number on file for this student.");
       return;
     }
-    const { templates, defaults } = getMessaging();
     const tpl = templates.find((t) => t.id === defaults.acknowledgement) ?? templates[0];
     if (!tpl) {
       toast.error("No message template configured.");
@@ -96,6 +96,16 @@ function ReceiptDetail() {
     }
     const msg = renderMessage(tpl, buildContext({ student, batch, payment, pending: balance, extras: { PaidAmount: payment.amount } }));
     openWhatsApp(mobile, msg);
+    void logComm({
+      studentId: student.id,
+      studentName: student.name,
+      mobile,
+      templateId: tpl.id,
+      templateName: tpl.name,
+      category: "acknowledgement",
+      message: msg,
+      sentBy: "receipt",
+    });
   };
 
   return (
