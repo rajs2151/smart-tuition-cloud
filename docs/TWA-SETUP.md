@@ -23,6 +23,13 @@ File: `public/.well-known/assetlinks.json` (must be served at
 
 ## 3. Pending Supabase migrations (blocker until applied)
 
+> **Do NOT run `supabase db push` until the `is_member` / `is_owner` grant
+> fix has landed.** `20260820120000_is_member_requires_active_access.sql`
+> revokes `EXECUTE` from `authenticated`, which makes every signed-in query
+> fail with `permission denied for function is_member`. See
+> [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) → "Pending Migrations Not Yet
+> Applied to Production".
+
 From the project root (with Supabase CLI logged in and linked):
 
 ```bash

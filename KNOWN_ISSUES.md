@@ -262,13 +262,21 @@ pass, not a quick fix.
 ## Pending Migrations Not Yet Applied to Production
 
 Status:
-**Action required on production** — apply with `supabase db push` (see [`docs/TWA-SETUP.md`](docs/TWA-SETUP.md)).
+**Do NOT `supabase db push` this migration until the grant fix has landed.**
+`20260820120000_is_member_requires_active_access.sql` revokes `EXECUTE` on
+`is_member` / `is_owner` from `authenticated` (lines 39-40). Every RLS
+policy calls those functions as the signed-in user, so once it is applied
+every tenant-scoped query fails with `permission denied for function
+is_member` — the same outage `20260709055109_fix_authenticated_execute_grants.sql`
+fixed. Reproduced on a local Supabase stack. `db push` applies every
+pending migration in filename order, so pushing anything (including the
+two messaging migrations below) applies this one too.
 
 Code + migration files are ready on this branch:
 
 - `20260814000000_message_templates_and_comm_logs.sql`
 - `20260814230000_follow_up_threshold.sql`
-- `20260820120000_is_member_requires_active_access.sql` (disabled members cannot pass RLS)
+- `20260820120000_is_member_requires_active_access.sql` (disabled members cannot pass RLS) — **blocked: do not push until the grant fix has landed**
 
 Notes:
 All migrations through `20260731000000_expenses_system.sql` were previously
