@@ -691,17 +691,38 @@ export async function listAttendanceSessions(
 ): Promise<AttendanceSession[]> {
   const instId = activeInstituteIdOrNull();
   if (!instId) return [];
-  let q = supabase
-    .from("attendance_sessions")
-    .select("*")
-    .eq("institute_id", instId)
-    .gte("session_date", fromDate)
-    .lte("session_date", toDate)
-    .order("session_date", { ascending: false });
-  if (batchId) q = q.eq("batch_id", batchId);
-  const { data, error } = await q;
-  if (error) throw error;
-  return (data ?? []).map(toAttendanceSession);
+  const rows = await fetchAllPages((from, to) => {
+    let q = supabase
+      .from("attendance_sessions")
+      .select("*")
+      .eq("institute_id", instId)
+      .gte("session_date", fromDate)
+      .lte("session_date", toDate);
+    if (batchId) q = q.eq("batch_id", batchId);
+    return q
+      .order("session_date", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, to);
+  });
+  return rows.map(toAttendanceSession);
+}
+
+// PostgREST caps every response at max-rows (1000 by default) and truncates
+// silently, so multi-month/multi-batch attendance ranges must be paged.
+// Callers must apply a total order (ending in a unique column) so pages
+// don't overlap or skip rows.
+const ATTENDANCE_PAGE_SIZE = 1000;
+async function fetchAllPages<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; ; from += ATTENDANCE_PAGE_SIZE) {
+    const { data, error } = await page(from, from + ATTENDANCE_PAGE_SIZE - 1);
+    if (error) throw error;
+    const rows = data ?? [];
+    all.push(...rows);
+    if (rows.length < ATTENDANCE_PAGE_SIZE) return all;
+  }
 }
 
 export interface AttendanceAbsenceRow extends AttendanceAbsence {
@@ -724,17 +745,18 @@ export async function listAttendanceAbsences(
 ): Promise<AttendanceAbsenceRow[]> {
   const instId = activeInstituteIdOrNull();
   if (!instId) return [];
-  let q = supabase
-    .from("attendance_absences")
-    .select("*, attendance_sessions!inner(session_date, batch_id, institute_id)")
-    .eq("attendance_sessions.institute_id", instId)
-    .gte("attendance_sessions.session_date", fromDate)
-    .lte("attendance_sessions.session_date", toDate);
-  if (batchId) q = q.eq("attendance_sessions.batch_id", batchId);
-  const { data, error } = await q;
-  if (error) throw error;
+  const rows = await fetchAllPages((from, to) => {
+    let q = supabase
+      .from("attendance_absences")
+      .select("*, attendance_sessions!inner(session_date, batch_id, institute_id)")
+      .eq("attendance_sessions.institute_id", instId)
+      .gte("attendance_sessions.session_date", fromDate)
+      .lte("attendance_sessions.session_date", toDate);
+    if (batchId) q = q.eq("attendance_sessions.batch_id", batchId);
+    return q.order("id", { ascending: true }).range(from, to);
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((row: any) => ({
+  return rows.map((row: any) => ({
     ...toAttendanceAbsence(row),
     sessionDate: row.attendance_sessions.session_date,
     batchId: row.attendance_sessions.batch_id,

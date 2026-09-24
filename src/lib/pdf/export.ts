@@ -73,3 +73,37 @@ export async function exportElementToPdf(el: HTMLElement, filename: string) {
 
   pdf.save(filename);
 }
+
+/**
+ * Multi-page variant for pre-paginated reports: each element is one
+ * A4-proportioned page (794×1123 CSS px) and is captured on its own, so
+ * rows are never sliced across a page boundary and no single canvas grows
+ * past mobile browsers' canvas-size limits on long reports.
+ */
+export async function exportPagesToPdf(pages: HTMLElement[], filename: string) {
+  if (typeof window === "undefined" || pages.length === 0) return;
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import("html2canvas-pro"),
+    import("jspdf"),
+  ]);
+
+  const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+
+  for (let i = 0; i < pages.length; i++) {
+    const canvas = await html2canvas(pages[i], {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+      logging: false,
+    });
+    if (i > 0) pdf.addPage();
+    // PNG pages are embedded near-uncompressed (~10 MB each at scale 2);
+    // JPEG keeps a page to a few hundred kB with text still sharp.
+    const data = canvas.toDataURL("image/jpeg", 0.9);
+    pdf.addImage(data, "JPEG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
+  }
+
+  pdf.save(filename);
+}
