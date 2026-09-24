@@ -99,7 +99,10 @@ export async function exportPagesToPdf(pages: HTMLElement[], filename: string) {
       logging: false,
     });
     if (i > 0) pdf.addPage();
-    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, pageWidth, pageHeight);
+    // PNG pages are embedded near-uncompressed (~10 MB each at scale 2);
+    // JPEG keeps a page to a few hundred kB with text still sharp.
+    const data = canvas.toDataURL("image/jpeg", 0.9);
+    pdf.addImage(data, "JPEG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
   }
 
   pdf.save(filename);
