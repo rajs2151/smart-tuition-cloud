@@ -63,7 +63,14 @@ The entire schema lives in `supabase/migrations/`, as plain, version-controlled
 SQL files. There are two ways to apply them — pick whichever you're more
 comfortable with.
 
-### Option A — Supabase CLI (recommended)
+### Option A — Supabase CLI (recommended for a brand-new project only)
+
+> ⚠️ **Never use Option A against the existing production project
+> (`xrkfbsupszhsjevcmntc`).** Its migration history does not match the repo,
+> so `db push`, `db push --dry-run`, and `migration repair` are all unsafe
+> there. Use Option B, one file at a time. See
+> [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) → "`supabase db push` Is Unusable
+> Against Production".
 
 ```bash
 supabase login

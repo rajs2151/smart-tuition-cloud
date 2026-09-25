@@ -30,8 +30,8 @@ Severity rubric:
 
 - **Finding:** Messaging templates / `comm_logs` are implemented in code, but [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) states migrations `20260814000000_message_templates_and_comm_logs.sql` and `20260814230000_follow_up_threshold.sql` are **not yet applied to production**. Until then, template edits and comm history will not persist reliably across devices (TWA on phone vs browser).
 - **Why it blocks:** WhatsApp is a core daily flow on Android; cross-device persistence and audit of sends is part of that flow.
-- **Evidence:** [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) lines 262–276 and 351–358; migration file [`supabase/migrations/20260814000000_message_templates_and_comm_logs.sql`](../supabase/migrations/20260814000000_message_templates_and_comm_logs.sql).
-- **Suggested fix direction:** `supabase db push` (or equivalent) to production and verify `authenticated` vs `anon` grants via `information_schema` before TWA launch.
+- **Evidence:** [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) → "Pending Migrations Not Yet Applied to Production" and "Messaging Templates Still `localStorage`-Only"; migration file [`supabase/migrations/20260814000000_message_templates_and_comm_logs.sql`](../supabase/migrations/20260814000000_message_templates_and_comm_logs.sql).
+- **Suggested fix direction:** apply the files by hand in the production SQL editor, one at a time, and verify `authenticated` vs `anon` grants via `information_schema` before TWA launch. **Not** `supabase db push` — it is unusable against production (see [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) → "`supabase db push` Is Unusable Against Production").
 
 ### B3: Bulk WhatsApp reminders rely on staggered `window.open` (fails inside TWA / Android WebView)
 
@@ -282,7 +282,7 @@ Reply with the finding IDs you want implemented first (e.g. `B1 B3 S5`), and we 
 | ID | Status |
 | --- | --- |
 | B1 | Done in repo — manifest, icons, assetlinks placeholder, `docs/TWA-SETUP.md` |
-| B2 | Migration files ready; **you must** run `supabase db push` on production (CLI not available in this environment) |
+| B2 | Migration files ready; **you must** apply them by hand in the production SQL editor, one file at a time (`supabase db push` is unusable against production — see `KNOWN_ISSUES.md`) |
 | B3 | Done — sequential Send & next bulk reminders |
 | S1 | Done — `.gitignore` + `.env.example`; `.env` removed from git index |
 | S2 | Done — migration `20260820120000_is_member_requires_active_access.sql` |
