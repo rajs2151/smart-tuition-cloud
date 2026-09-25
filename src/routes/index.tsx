@@ -70,6 +70,7 @@ function Dashboard() {
   const { templates, defaults } = useMessaging();
 
   const [studentsModalOpen, setStudentsModalOpen] = useState(false);
+  const [efficiencyModalOpen, setEfficiencyModalOpen] = useState(false);
   const [collectionModalOpen, setCollectionModalOpen] = useState(false);
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
   const [followUpModalOpen, setFollowUpModalOpen] = useState(false);
@@ -192,6 +193,31 @@ function Dashboard() {
     return { name: b.name.split("—")[0].trim().slice(0, 18), value: collected };
   });
 
+  // Same ledger as the Collection efficiency card, split per batch so the
+  // dialog can show how much of each class's billed fees is still unpaid.
+  const knownBatchIds = new Set(batches.map((b) => b.id));
+  const batchCollection = batches
+    .map((b) => {
+      const inBatch = students.filter((s) => s.batchId === b.id);
+      const billed = inBatch.reduce((a, s) => a + (s.totalFee - s.discount), 0);
+      const collected = inBatch.reduce((a, s) => a + collectedFor(s.id), 0);
+      const collectedPct = billed > 0 ? Math.round((collected / billed) * 100) : null;
+      return {
+        id: b.id,
+        name: b.name,
+        students: inBatch.length,
+        collectedPct,
+        remainingPct: collectedPct === null ? null : 100 - collectedPct,
+      };
+    })
+    .filter((b) => b.students > 0)
+    .sort(
+      (a, b) => (b.remainingPct ?? -1) - (a.remainingPct ?? -1) || a.name.localeCompare(b.name),
+    );
+  const unassignedStudents = students.filter(
+    (s) => !s.batchId || !knownBatchIds.has(s.batchId),
+  ).length;
+
   // students by standard (exam-category students grouped under their exam
   // instead, since they don't have a standard) — for the Total Students
   // modal, sorted highest count first.
@@ -280,6 +306,7 @@ function Dashboard() {
             delta={`${100 - collectionRate}% pending`}
             tone="primary"
             icon={<Percent className="h-4 w-4" />}
+            onClick={() => setEfficiencyModalOpen(true)}
           />
           <Kpi label="Active batches" value={activeBatches.toString()} delta={`${batches.length} total`} tone="warning" icon={<BookOpen className="h-4 w-4" />} />
           <Kpi
@@ -551,6 +578,65 @@ function Dashboard() {
                 </span>
               </div>
             ))}
+            <div className="mt-1 flex items-center justify-between border-t px-2 pt-2 text-sm font-semibold">
+              <span>Total</span>
+              <span>
+                {students.length} {students.length === 1 ? "Student" : "Students"}
+              </span>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={efficiencyModalOpen} onOpenChange={setEfficiencyModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Fee collection by batch</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Remaining is the share of billed fees not yet collected.
+          </p>
+          <div className="max-h-[60vh] space-y-3 overflow-y-auto">
+            {batchCollection.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No students in a batch yet.
+              </p>
+            ) : (
+              batchCollection.map((b) => (
+                <div key={b.id} className="rounded-md px-2 py-1.5">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate font-medium">{b.name}</span>
+                    <span
+                      className={
+                        b.remainingPct === null
+                          ? "shrink-0 text-muted-foreground"
+                          : b.remainingPct > 0
+                            ? "shrink-0 font-semibold text-destructive"
+                            : "shrink-0 font-semibold text-success"
+                      }
+                    >
+                      {b.remainingPct === null ? "No fees set" : `${b.remainingPct}% remaining`}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {b.students} {b.students === 1 ? "student" : "students"}
+                    </span>
+                    <span>{b.collectedPct === null ? "—" : `${b.collectedPct}% collected`}</span>
+                  </div>
+                  {b.collectedPct !== null && (
+                    <Progress value={b.collectedPct} className="mt-1.5 h-1.5" />
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex items-baseline justify-between gap-3 border-t px-2 pt-2 text-sm font-semibold">
+            <span>
+              Total · {students.length} {students.length === 1 ? "student" : "students"}
+              {unassignedStudents > 0 ? ` (${unassignedStudents} not in a batch)` : ""}
+            </span>
+            <span className="shrink-0">{100 - collectionRate}% remaining</span>
           </div>
         </DialogContent>
       </Dialog>
