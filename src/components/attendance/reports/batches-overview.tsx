@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileDown, FileText, ChevronRight, Loader2 } from "lucide-react";
+import { FileDown, FileText, ChevronRight, Loader2, Share2 } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,13 @@ import {
 
 import { listAttendanceAbsences, listAttendanceSessions } from "@/lib/data/adapter";
 import { fmtDate, todayLocalISO } from "@/lib/format";
-import { exportPagesToPdf } from "@/lib/pdf/export";
+import { exportPagesToPdf, renderPagesToPdfFile } from "@/lib/pdf/export";
 import { useSettings } from "@/lib/settings/store";
 import {
   attendanceReportFileName,
   buildAttendanceReport,
   downloadAttendanceReport,
+  reportTitle,
   type AttendanceReport,
 } from "@/lib/reports/attendance-report";
 import type { Batch, Student } from "@/lib/data/types";
@@ -41,9 +42,13 @@ function daysAgoISO(days: number): string {
   return toISO(d);
 }
 
-type Period = "7d" | "30d" | "this-month" | "last-month" | "custom";
+type ExportKind = "excel" | "pdf" | "share";
+
+type Period = "today" | "yesterday" | "7d" | "30d" | "this-month" | "last-month" | "custom";
 
 const PERIOD_LABEL: Record<Period, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
   "7d": "Last 7 days",
   "30d": "Last 30 days",
   "this-month": "This month",
@@ -54,6 +59,10 @@ const PERIOD_LABEL: Record<Period, string> = {
 function periodRange(period: Exclude<Period, "custom">): { from: string; to: string } {
   const now = new Date();
   switch (period) {
+    case "today":
+      return { from: toISO(now), to: toISO(now) };
+    case "yesterday":
+      return { from: daysAgoISO(1), to: daysAgoISO(1) };
     case "7d":
       return { from: daysAgoISO(6), to: toISO(now) };
     case "30d":
@@ -79,7 +88,8 @@ const absencesQuery = (from: string, to: string) => ({
 });
 
 /** Reports landing page — institute-wide snapshot over the last 30 days,
- *  an Excel/PDF report download for any period and batch, then one card
+ *  an absent-students Excel/PDF (and WhatsApp share) for any period and
+ *  batch, then one card
  *  per batch to drill into its full day-by-day history (BatchDayList). */
 export function BatchesOverview({
   batches,
@@ -182,13 +192,18 @@ function ReportDownloadCard({ batches, students }: { batches: Batch[]; students:
   const { institute } = useSettings();
   const today = todayLocalISO();
 
-  const [period, setPeriod] = useState<Period>("30d");
+  const [period, setPeriod] = useState<Period>("today");
   const [customFrom, setCustomFrom] = useState(() => daysAgoISO(RANGE_DAYS));
   const [customTo, setCustomTo] = useState(today);
   const [batchFilter, setBatchFilter] = useState<string>("all");
-  const [exporting, setExporting] = useState<"excel" | "pdf" | null>(null);
+  const [exporting, setExporting] = useState<ExportKind | null>(null);
   const [pdfReport, setPdfReport] = useState<AttendanceReport | null>(null);
   const pdfRef = useRef<HTMLDivElement>(null);
+  const [canShareFiles, setCanShareFiles] = useState(false);
+  useEffect(() => {
+    const probe = new File([""], "probe.pdf", { type: "application/pdf" });
+    setCanShareFiles(!!navigator.canShare?.({ files: [probe] }));
+  }, []);
 
   const { from, to } =
     period === "custom" ? { from: customFrom, to: customTo } : periodRange(period);
@@ -243,12 +258,14 @@ function ReportDownloadCard({ batches, students }: { batches: Batch[]; students:
         ? loadError instanceof Error
           ? loadError.message
           : "Could not load attendance for this range."
-        : preview && preview.totals.takenSessions === 0
-          ? "No attendance was taken in this range."
+        : preview && preview.sections.length === 0
+          ? period === "today"
+            ? "Attendance hasn't been taken yet today."
+            : "No attendance was taken in this range."
           : null;
   const canExport = !blocker && !loading && !!preview && exporting === null;
 
-  const handleExport = async (kind: "excel" | "pdf") => {
+  const handleExport = async (kind: ExportKind) => {
     setExporting(kind);
     try {
       // Always re-read from the server so the file reflects attendance
@@ -267,7 +284,7 @@ function ReportDownloadCard({ batches, students }: { batches: Batch[]; students:
         fromDate: from,
         toDate: to,
       });
-      if (report.totals.takenSessions === 0) {
+      if (report.sections.length === 0) {
         throw new Error("No attendance was taken in this range.");
       }
 
@@ -281,8 +298,23 @@ function ReportDownloadCard({ batches, students }: { batches: Batch[]; students:
           pdfRef.current?.querySelectorAll<HTMLElement>("[data-pdf-page]") ?? [],
         );
         if (pages.length === 0) throw new Error("Could not lay out the PDF.");
-        await exportPagesToPdf(pages, attendanceReportFileName(report, "pdf"));
-        toast.success("PDF report downloaded");
+        const fileName = attendanceReportFileName(report, "pdf");
+        if (kind === "share") {
+          const file = await renderPagesToPdfFile(pages, fileName);
+          if (!file) throw new Error("Could not generate the PDF");
+          try {
+            await navigator.share({ files: [file], title: reportTitle(report) });
+          } catch (e) {
+            if (e instanceof DOMException && e.name === "AbortError") return;
+            // Share needs a recent tap; if generating took too long the
+            // browser refuses, so fall back to a normal download.
+            await exportPagesToPdf(pages, fileName);
+            toast.success("PDF downloaded — share it from your Downloads");
+          }
+        } else {
+          await exportPagesToPdf(pages, fileName);
+          toast.success("PDF report downloaded");
+        }
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not generate the report");
@@ -298,7 +330,8 @@ function ReportDownloadCard({ batches, students }: { batches: Batch[]; students:
         <div>
           <p className="font-display font-bold leading-tight">Download report</p>
           <p className="text-xs text-muted-foreground">
-            Student-wise attendance, batch summary and absence log for the selected period.
+            Class name, date and the names of absent students — ready to share in the class WhatsApp
+            group.
           </p>
         </div>
 
@@ -380,7 +413,7 @@ function ReportDownloadCard({ batches, students }: { batches: Batch[]; students:
             ) : blocker ? (
               blocker
             ) : preview ? (
-              `${preview.students.length} student${preview.students.length === 1 ? "" : "s"} · ${preview.totals.takenSessions} session${preview.totals.takenSessions === 1 ? "" : "s"} · ${preview.totals.absences} absence${preview.totals.absences === 1 ? "" : "s"}`
+              `${preview.totals.sessions} class${preview.totals.sessions === 1 ? "" : "es"} recorded · ${preview.totals.absences} absent`
             ) : null}
           </p>
           <div className="flex gap-2">
@@ -412,6 +445,21 @@ function ReportDownloadCard({ batches, students }: { batches: Batch[]; students:
               )}
               {exporting === "pdf" ? "Generating…" : "PDF"}
             </Button>
+            {canShareFiles && (
+              <Button
+                size="sm"
+                className="flex-1 sm:flex-none"
+                disabled={!canExport}
+                onClick={() => handleExport("share")}
+              >
+                {exporting === "share" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Share2 className="h-3.5 w-3.5" />
+                )}
+                {exporting === "share" ? "Preparing…" : "Share"}
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>

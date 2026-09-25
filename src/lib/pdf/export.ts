@@ -81,7 +81,20 @@ export async function exportElementToPdf(el: HTMLElement, filename: string) {
  * past mobile browsers' canvas-size limits on long reports.
  */
 export async function exportPagesToPdf(pages: HTMLElement[], filename: string) {
-  if (typeof window === "undefined" || pages.length === 0) return;
+  const pdf = await renderPagesToPdf(pages);
+  pdf?.save(filename);
+}
+
+/** Same as exportPagesToPdf but returns the file instead of downloading
+ *  it, e.g. to hand to the Web Share API. */
+export async function renderPagesToPdfFile(pages: HTMLElement[], filename: string) {
+  const pdf = await renderPagesToPdf(pages);
+  if (!pdf) return null;
+  return new File([pdf.output("blob")], filename, { type: "application/pdf" });
+}
+
+async function renderPagesToPdf(pages: HTMLElement[]) {
+  if (typeof window === "undefined" || pages.length === 0) return null;
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import("html2canvas-pro"),
     import("jspdf"),
@@ -105,5 +118,5 @@ export async function exportPagesToPdf(pages: HTMLElement[], filename: string) {
     pdf.addImage(data, "JPEG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
   }
 
-  pdf.save(filename);
+  return pdf;
 }
