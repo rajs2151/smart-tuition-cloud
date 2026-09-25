@@ -20,8 +20,6 @@ export interface AbsentStudent {
 export interface ClassDaySection {
   sessionDate: string;
   batchName: string;
-  status: AttendanceSession["status"];
-  totalStudents: number;
   absent: AbsentStudent[];
 }
 
@@ -43,10 +41,11 @@ const byRollNo = (a: AbsentStudent, b: AbsentStudent) =>
   a.studentName.localeCompare(b.studentName);
 
 /**
- * Absent-students report: for every recorded session of the in-scope
- * batches within the range, the class name, date and only the names of the
- * students marked absent — no per-student statistics. Days a class has no
- * session at all are omitted (nothing was recorded to share).
+ * Absent-students report: for every session where attendance was taken for
+ * the in-scope batches within the range, the class name, date and only the
+ * names of the students marked absent — no class totals or per-student
+ * statistics. Holidays, cancelled lectures and days with no session are
+ * omitted (there is no absent list to share).
  *
  * `students` must include soft-deleted students so historical absences
  * still resolve to a name.
@@ -66,7 +65,11 @@ export function buildAttendanceReport(input: {
   const studentById = new Map(input.students.map((s) => [s.id, s]));
 
   const sessions = input.sessions.filter(
-    (s) => batchName.has(s.batchId) && s.sessionDate >= fromDate && s.sessionDate <= toDate,
+    (s) =>
+      s.status === "taken" &&
+      batchName.has(s.batchId) &&
+      s.sessionDate >= fromDate &&
+      s.sessionDate <= toDate,
   );
 
   const absentBySession = new Map<string, AbsentStudent[]>();
@@ -84,9 +87,7 @@ export function buildAttendanceReport(input: {
     .map((s) => ({
       sessionDate: s.sessionDate,
       batchName: batchName.get(s.batchId)!,
-      status: s.status,
-      totalStudents: s.totalStudents,
-      absent: s.status === "taken" ? (absentBySession.get(s.id) ?? []).sort(byRollNo) : [],
+      absent: (absentBySession.get(s.id) ?? []).sort(byRollNo),
     }))
     .sort(
       (a, b) =>
@@ -121,12 +122,36 @@ export function reportTitle(report: AttendanceReport): string {
   return `Absent Students — ${report.scopeLabel} — ${reportDateLabel(report)}`;
 }
 
-/** Human line under a class heading, e.g. "3 absent of 42". */
+/** Human line under a class heading, e.g. "3 absent". */
 export function sectionSummary(section: ClassDaySection): string {
-  if (section.status === "holiday") return "Holiday";
-  if (section.status === "cancelled") return "Lecture cancelled";
-  if (section.absent.length === 0) return `All ${section.totalStudents} present`;
-  return `${section.absent.length} absent of ${section.totalStudents}`;
+  return section.absent.length === 0 ? "No one absent" : `${section.absent.length} absent`;
+}
+
+function absentLine(a: AbsentStudent, index: number): string {
+  return `${index + 1}. ${a.studentName}${a.rollNo ? ` (Roll ${a.rollNo})` : ""}`;
+}
+
+/** Plain-text version for pasting straight into a WhatsApp group
+ *  (`*…*` renders bold in WhatsApp). */
+export function attendanceReportText(report: AttendanceReport): string {
+  const singleDay = isSingleDay(report);
+  const lines: string[] = [];
+  if (singleDay && report.sections.length === 1) {
+    const s = report.sections[0];
+    lines.push(
+      `*${s.batchName}* — ${fmtDate(s.sessionDate)}`,
+      `Absent students: ${s.absent.length}`,
+    );
+    s.absent.forEach((a, i) => lines.push(absentLine(a, i)));
+    return lines.join("\n");
+  }
+  lines.push(`*Absent Students — ${report.scopeLabel}*`, reportDateLabel(report));
+  for (const s of report.sections) {
+    const heading = singleDay ? s.batchName : `${s.batchName} — ${fmtDate(s.sessionDate)}`;
+    lines.push("", `*${heading}* · ${sectionSummary(s)}`);
+    s.absent.forEach((a, i) => lines.push(absentLine(a, i)));
+  }
+  return lines.join("\n");
 }
 
 function sanitizeFileNamePart(name: string): string {
@@ -148,14 +173,14 @@ const HEADER_FILL: ExcelJS.Fill = {
   fgColor: { argb: "FF1F2937" },
 };
 
-const HEADERS = ["Date", "Class", "Roll No", "Absent Student", "Class Status"] as const;
+const HEADERS = ["Date", "Class", "Roll No", "Absent Student", "Absent in Class"] as const;
 const TITLE_ROW = 1;
 const SUBTITLE_ROW = 2;
 const HEADER_ROW = 4;
 
 /** Downloads the absent-students workbook: one row per absent student,
- *  plus one row per class-day with nobody absent (or a holiday/cancelled
- *  lecture) so every recorded class still appears. */
+ *  plus one row per class-day with nobody absent so every class where
+ *  attendance was taken still appears. */
 export async function downloadAttendanceReport(report: AttendanceReport): Promise<void> {
   if (report.sections.length === 0) {
     throw new Error("No attendance was taken in this date range.");
@@ -165,11 +190,11 @@ export async function downloadAttendanceReport(report: AttendanceReport): Promis
   for (const s of report.sections) {
     const date = fmtDate(s.sessionDate);
     if (s.absent.length === 0) {
-      rows.push([date, s.batchName, "", "—", sectionSummary(s)]);
+      rows.push([date, s.batchName, "", sectionSummary(s), "0"]);
       continue;
     }
     for (const a of s.absent) {
-      rows.push([date, s.batchName, a.rollNo, a.studentName, sectionSummary(s)]);
+      rows.push([date, s.batchName, a.rollNo, a.studentName, String(s.absent.length)]);
     }
   }
 
