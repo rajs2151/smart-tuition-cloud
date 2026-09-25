@@ -7,6 +7,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -46,6 +53,7 @@ export function NotifyTab({
   const { templates } = useMessaging();
   const today = todayLocalISO();
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [walkOpen, setWalkOpen] = useState(false);
 
   const absencesQuery = useQuery({
     queryKey: ["attendance-today-absences", today],
@@ -129,6 +137,12 @@ export function NotifyTab({
   };
 
   const sentCount = rows.filter((r) => r.absence.notifiedAt).length;
+  // WhatsApp's wa.me link opens exactly one chat. "Send & next" walks the
+  // unsent list one parent per tap — the same pattern as fee reminders —
+  // because opening every chat from one click is blocked by the browser.
+  const unsent = rows.filter((r) => !r.absence.notifiedAt && pickMobile(r.student));
+  const unsentNoNumber = rows.filter((r) => !r.absence.notifiedAt && !pickMobile(r.student)).length;
+  const current = unsent[0];
 
   return (
     <div className="space-y-3">
@@ -141,7 +155,59 @@ export function NotifyTab({
             {skippedCount} batch{skippedCount > 1 ? "es" : ""} marked holiday/cancelled today
           </p>
         )}
+        {unsent.length > 0 && (
+          <Button size="sm" className="w-full sm:w-auto" onClick={() => setWalkOpen(true)}>
+            <MessageCircle className="h-3.5 w-3.5 text-[#25D366]" />
+            Send & next ({unsent.length} left)
+          </Button>
+        )}
       </div>
+
+      <Dialog open={walkOpen} onOpenChange={setWalkOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Notify absentees</DialogTitle>
+          </DialogHeader>
+          {current ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{current.student.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    #{current.student.rollNo} · {current.batch.name}
+                  </p>
+                </div>
+                <Badge variant="secondary" className="shrink-0">
+                  {unsent.length} left
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Opens this parent's WhatsApp with the message ready. Tap Send there, come back, then
+                Send & next. WhatsApp can only open one chat per tap.
+                {unsentNoNumber > 0
+                  ? ` ${unsentNoNumber} ${unsentNoNumber === 1 ? "student has" : "students have"} no number and will be skipped.`
+                  : ""}
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Everyone with a number has been opened.</p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWalkOpen(false)}>
+              Close
+            </Button>
+            {current && (
+              <Button
+                disabled={sendingId === current.absence.id}
+                onClick={() => void send(current)}
+              >
+                <MessageCircle className="h-4 w-4" />
+                {sendingId === current.absence.id ? "Opening…" : "Send & next"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {absencesQuery.isLoading || sessionsQuery.isLoading ? (
         <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>

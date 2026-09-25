@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { getSession } from "@/lib/auth/session";
