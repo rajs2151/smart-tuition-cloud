@@ -28,10 +28,10 @@ import type { AttendanceLanguage, Batch, Student } from "@/lib/data/types";
 /**
  * Top-level "Notify" tab — a single flat table of every absent student
  * across every batch, TODAY only, one Send action per row. Distinct from
- * DayNotifyList (Reports → batch → day), which is per-batch and works
- * for any historical day; this is the fast, batch-agnostic "who do I
- * still need to message today" view, matching the flat-table spec
- * (Name, Batch, Send) rather than a batch-first drill-down.
+ * DayNotifyList, which is per-batch and works for any historical day;
+ * this is the fast, batch-agnostic "who do I still need to message today"
+ * view, matching the flat-table spec (Name, Batch, Send) rather than a
+ * batch-first drill-down.
  */
 export function NotifyTab({
   batches,
