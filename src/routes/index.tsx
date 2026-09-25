@@ -52,10 +52,7 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Dashboard — Vidyafee" },
-      {
-        name: "description",
-        content: "Live overview of collections, dues and admissions for your institute.",
-      },
+      { name: "description", content: "Live overview of collections, dues and admissions for your institute." },
     ],
   }),
   component: Dashboard,
@@ -173,13 +170,7 @@ function Dashboard() {
     }
     const msg = renderMessage(
       tpl,
-      buildContext({
-        student: st,
-        batch,
-        pending: amount,
-        dueDate,
-        extras: { PaidAmount: collectedFor(st.id) },
-      }),
+      buildContext({ student: st, batch, pending: amount, dueDate, extras: { PaidAmount: collectedFor(st.id) } }),
     );
     openWhatsApp(mobile, msg);
     void logComm({
@@ -193,6 +184,7 @@ function Dashboard() {
       sentBy: "dashboard",
     });
   };
+
 
   // batch revenue
   const batchRevenue = batches.map((b) => {
@@ -249,16 +241,7 @@ function Dashboard() {
     <>
       <AppHeader
         title={`Welcome back, ${institute.name}`}
-        subtitle={
-          typeof window === "undefined"
-            ? "Today's overview"
-            : new Date().toLocaleDateString("en-IN", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                year: "numeric",
-              })
-        }
+        subtitle={typeof window === "undefined" ? "Today's overview" : new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
         actions={
           <Badge variant="secondary" className="ml-auto gap-1.5">
             <Sparkles className="h-3 w-3" /> Trial · 14 days left
@@ -272,9 +255,7 @@ function Dashboard() {
           <AddStudentDialog
             trigger={
               <button className="group flex items-center gap-3 rounded-xl border bg-card p-4 text-left transition hover:border-primary hover:shadow-md">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <UserPlus className="h-5 w-5" />
-                </span>
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><UserPlus className="h-5 w-5" /></span>
                 <span>
                   <p className="font-display font-bold">Add Student</p>
                   <p className="text-xs text-muted-foreground">New admission</p>
@@ -282,37 +263,22 @@ function Dashboard() {
               </button>
             }
           />
-          <Link
-            to="/fees"
-            className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success">
-              <IndianRupee className="h-5 w-5" />
-            </span>
+          <Link to="/fees" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10 text-success"><IndianRupee className="h-5 w-5" /></span>
             <span>
               <p className="font-display font-bold">Collect Fee</p>
               <p className="text-xs text-muted-foreground">Record payment</p>
             </span>
           </Link>
-          <Link
-            to="/receipts"
-            className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info">
-              <ReceiptIcon className="h-5 w-5" />
-            </span>
+          <Link to="/receipts" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10 text-info"><ReceiptIcon className="h-5 w-5" /></span>
             <span>
               <p className="font-display font-bold">Receipts</p>
               <p className="text-xs text-muted-foreground">Print &amp; share</p>
             </span>
           </Link>
-          <Link
-            to="/batches"
-            className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15 text-warning-foreground">
-              <FileBarChart className="h-5 w-5" />
-            </span>
+          <Link to="/batches" className="group flex items-center gap-3 rounded-xl border bg-card p-4 transition hover:border-primary hover:shadow-md">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/15 text-warning-foreground"><FileBarChart className="h-5 w-5" /></span>
             <span>
               <p className="font-display font-bold">Batches</p>
               <p className="text-xs text-muted-foreground">Manage batches</p>
@@ -324,312 +290,273 @@ function Dashboard() {
           <DashboardSkeletons />
         ) : (
           <>
-            {/* KPIs */}
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Kpi
-                label="Total students"
-                value={students.length.toString()}
-                delta={`${activeStudents} active`}
-                tone="info"
-                icon={<Users className="h-4 w-4" />}
-                onClick={() => setStudentsModalOpen(true)}
-              />
-              <Kpi
-                label="Collection efficiency"
-                value={`${collectionRate}%`}
-                delta={`${100 - collectionRate}% pending`}
-                tone="primary"
-                icon={<Percent className="h-4 w-4" />}
-                onClick={() => setEfficiencyModalOpen(true)}
-              />
-              <Kpi
-                label="Active batches"
-                value={activeBatches.toString()}
-                delta={`${batches.length} total`}
-                tone="warning"
-                icon={<BookOpen className="h-4 w-4" />}
-              />
-              <Kpi
-                label="Total collection"
-                value={inr(totalCollected)}
-                delta={`${collectionRate}% of billed`}
-                tone="success"
-                icon={<IndianRupee className="h-4 w-4" />}
-                onClick={() => setCollectionModalOpen(true)}
-              />
-              <Kpi
-                label="Pending fees"
-                value={inr(pending)}
-                delta={`${pendingStudents.length} students`}
-                tone="warning"
-                icon={<AlertCircle className="h-4 w-4" />}
-                onClick={() => setPendingModalOpen(true)}
-              />
-              <Kpi
-                label="Monthly revenue"
-                value={inr(monthlyRevenue)}
-                delta="current month"
-                tone="primary"
-                icon={<TrendingUp className="h-4 w-4" />}
-              />
-            </div>
+        {/* KPIs */}
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Kpi
+            label="Total students"
+            value={students.length.toString()}
+            delta={`${activeStudents} active`}
+            tone="info"
+            icon={<Users className="h-4 w-4" />}
+            onClick={() => setStudentsModalOpen(true)}
+          />
+          <Kpi
+            label="Collection efficiency"
+            value={`${collectionRate}%`}
+            delta={`${100 - collectionRate}% pending`}
+            tone="primary"
+            icon={<Percent className="h-4 w-4" />}
+            onClick={() => setEfficiencyModalOpen(true)}
+          />
+          <Kpi label="Active batches" value={activeBatches.toString()} delta={`${batches.length} total`} tone="warning" icon={<BookOpen className="h-4 w-4" />} />
+          <Kpi
+            label="Total collection"
+            value={inr(totalCollected)}
+            delta={`${collectionRate}% of billed`}
+            tone="success"
+            icon={<IndianRupee className="h-4 w-4" />}
+            onClick={() => setCollectionModalOpen(true)}
+          />
+          <Kpi
+            label="Pending fees"
+            value={inr(pending)}
+            delta={`${pendingStudents.length} students`}
+            tone="warning"
+            icon={<AlertCircle className="h-4 w-4" />}
+            onClick={() => setPendingModalOpen(true)}
+          />
+          <Kpi label="Monthly revenue" value={inr(monthlyRevenue)} delta="current month" tone="primary" icon={<TrendingUp className="h-4 w-4" />} />
+        </div>
 
-            <div className="grid gap-6 xl:grid-cols-3">
-              {/* Revenue chart */}
-              <Suspense
-                fallback={
-                  <Card className="xl:col-span-2">
-                    <CardContent className="p-6">
-                      <Skeleton className="h-64 w-full" />
-                    </CardContent>
-                  </Card>
-                }
-              >
-                <DashboardCharts
-                  months={months}
-                  hasTrendData={hasTrendData}
-                  batchRevenue={batchRevenue}
-                />
-              </Suspense>
-
-              {/* Students needing follow-up */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="text-base">Needs follow-up</CardTitle>
-                    <Select
-                      value={String(followUpThreshold)}
-                      onValueChange={(v) => {
-                        void setFollowUpThreshold(Number(v)).catch((e) =>
-                          toast.error(e instanceof Error ? e.message : "Could not save threshold"),
-                        );
-                      }}
-                    >
-                      <SelectTrigger className="h-7 w-[84px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[20, 30, 40, 50, 60].map((t) => (
-                          <SelectItem key={t} value={String(t)}>
-                            ≤ {t}%
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Students who've collected {followUpThreshold}% or less
-                  </p>
-                </CardHeader>
-                <CardContent
-                  className="cursor-pointer"
-                  onClick={() => followUpStudents.length > 0 && setFollowUpModalOpen(true)}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-                      <AlertTriangle className="h-6 w-6" />
-                    </span>
-                    <div>
-                      <p className="font-display text-3xl font-bold leading-none">
-                        {followUpStudents.length}
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {followUpStudents.length === 1 ? "student" : "students"} below threshold
-                      </p>
-                    </div>
-                  </div>
-                  {followUpStudents.length > 0 && (
-                    <p className="mt-3 text-xs text-primary hover:underline">
-                      View list <ArrowUpRight className="inline h-3 w-3" />
-                    </p>
-                  )}
+        <div className="grid gap-6 xl:grid-cols-3">
+          {/* Revenue chart */}
+          <Suspense
+            fallback={
+              <Card className="xl:col-span-2">
+                <CardContent className="p-6">
+                  <Skeleton className="h-64 w-full" />
                 </CardContent>
               </Card>
-            </div>
+            }
+          >
+            <DashboardCharts months={months} hasTrendData={hasTrendData} batchRevenue={batchRevenue} />
+          </Suspense>
 
-            {/* Pending reminders — installments due soon or overdue */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+          {/* Students needing follow-up */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-base">Needs follow-up</CardTitle>
+                <Select
+                  value={String(followUpThreshold)}
+                  onValueChange={(v) => {
+                    void setFollowUpThreshold(Number(v)).catch((e) =>
+                      toast.error(e instanceof Error ? e.message : "Could not save threshold"),
+                    );
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-[84px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[20, 30, 40, 50, 60].map((t) => (
+                      <SelectItem key={t} value={String(t)}>
+                        ≤ {t}%
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Students who've collected {followUpThreshold}% or less
+              </p>
+            </CardHeader>
+            <CardContent
+              className="cursor-pointer"
+              onClick={() => followUpStudents.length > 0 && setFollowUpModalOpen(true)}
+            >
+              <div className="flex items-center gap-3">
+                <span className="flex h-12 w-12 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                  <AlertTriangle className="h-6 w-6" />
+                </span>
                 <div>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Bell className="h-4 w-4 text-warning-foreground" />
-                    Pending reminders
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Installments overdue or due in the next {REMINDER_WINDOW_DAYS} days
+                  <p className="font-display text-3xl font-bold leading-none">
+                    {followUpStudents.length}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {followUpStudents.length === 1 ? "student" : "students"} below threshold
                   </p>
                 </div>
-                <Badge variant="outline">{reminders.length}</Badge>
-              </CardHeader>
-              <CardContent>
-                {reminders.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    No installments due in the next {REMINDER_WINDOW_DAYS} days. All caught up.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {reminders.map(({ student, batch, installment, daysDiff }) => {
-                      const overdue = daysDiff < 0;
-                      const dueLabel = overdue
-                        ? `Overdue by ${Math.abs(daysDiff)} day${Math.abs(daysDiff) === 1 ? "" : "s"}`
-                        : daysDiff === 0
-                          ? "Due today"
-                          : `Due in ${daysDiff} day${daysDiff === 1 ? "" : "s"}`;
-                      return (
-                        <div
-                          key={`${student.id}-${installment.id}`}
-                          className="flex flex-wrap items-center gap-3 rounded-lg border bg-card/40 p-3"
-                        >
-                          <Avatar className="h-9 w-9">
-                            <AvatarFallback className="bg-warning/20 text-warning-foreground text-xs font-bold">
-                              {initials(student.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Link
-                                to="/students/$id"
-                                params={{ id: student.id }}
-                                className="truncate font-medium hover:underline"
-                              >
-                                {student.name}
-                              </Link>
-                              <Badge
-                                variant={overdue ? "destructive" : "secondary"}
-                                className="text-[10px]"
-                              >
-                                {dueLabel}
-                              </Badge>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              {batch?.name ?? student.course ?? "—"} · {inr(installment.amount)} ·
-                              Due {fmtDate(installment.dueDate)}
-                            </p>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              sendReminder(student.id, installment.dueDate, installment.amount)
-                            }
-                          >
-                            <MessageCircle className="h-4 w-4" /> WhatsApp
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              </div>
+              {followUpStudents.length > 0 && (
+                <p className="mt-3 text-xs text-primary hover:underline">
+                  View list <ArrowUpRight className="inline h-3 w-3" />
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-            <div className="grid gap-6 xl:grid-cols-3">
-              {/* Defaulters */}
-              <Card className="xl:col-span-2">
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Top pending dues</CardTitle>
-                    <p className="text-xs text-muted-foreground">AI-suggested follow-ups</p>
-                  </div>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to="/fees">
-                      View all <ArrowUpRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </Button>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {defaulters.map((s) => (
+        {/* Pending reminders — installments due soon or overdue */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bell className="h-4 w-4 text-warning-foreground" />
+                Pending reminders
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Installments overdue or due in the next {REMINDER_WINDOW_DAYS} days
+              </p>
+            </div>
+            <Badge variant="outline">{reminders.length}</Badge>
+          </CardHeader>
+          <CardContent>
+            {reminders.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No installments due in the next {REMINDER_WINDOW_DAYS} days. All caught up.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {reminders.map(({ student, batch, installment, daysDiff }) => {
+                  const overdue = daysDiff < 0;
+                  const dueLabel = overdue
+                    ? `Overdue by ${Math.abs(daysDiff)} day${Math.abs(daysDiff) === 1 ? "" : "s"}`
+                    : daysDiff === 0
+                      ? "Due today"
+                      : `Due in ${daysDiff} day${daysDiff === 1 ? "" : "s"}`;
+                  return (
                     <div
-                      key={s.id}
-                      className="flex items-center gap-3 rounded-lg border bg-card/40 p-3"
+                      key={`${student.id}-${installment.id}`}
+                      className="flex flex-wrap items-center gap-3 rounded-lg border bg-card/40 p-3"
                     >
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
-                          {initials(s.name)}
+                      <Avatar className="h-9 w-9">
+                        <AvatarFallback className="bg-warning/20 text-warning-foreground text-xs font-bold">
+                          {initials(student.name)}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Link
                             to="/students/$id"
-                            params={{ id: s.id }}
+                            params={{ id: student.id }}
                             className="truncate font-medium hover:underline"
                           >
-                            {s.name}
+                            {student.name}
                           </Link>
-                          <span className="font-display font-bold text-destructive">
-                            {inr(s.due)}
-                          </span>
+                          <Badge
+                            variant={overdue ? "destructive" : "secondary"}
+                            className="text-[10px]"
+                          >
+                            {dueLabel}
+                          </Badge>
                         </div>
-                        <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                          <span>
-                            {s.course} · {s.rollNo}
-                          </span>
-                          <span>{s.pct}% paid</span>
-                        </div>
-                        <Progress value={s.pct} className="mt-1.5 h-1.5" />
+                        <p className="text-xs text-muted-foreground">
+                          {batch?.name ?? student.course ?? "—"} ·{" "}
+                          {inr(installment.amount)} · Due {fmtDate(installment.dueDate)}
+                        </p>
                       </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              {/* Recent payments */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Recent payments</CardTitle>
-                    <p className="text-xs text-muted-foreground">Latest 6 transactions</p>
-                  </div>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link to="/receipts">
-                      All <ArrowUpRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </Button>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {recent.map((p) => {
-                    const st = students.find((s) => s.id === p.studentId);
-                    return (
-                      <Link
-                        key={p.id}
-                        to="/receipts/$id"
-                        params={{ id: p.id }}
-                        className="flex items-center justify-between rounded-lg p-2 hover:bg-accent/50"
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => sendReminder(student.id, installment.dueDate, installment.amount)}
                       >
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{st?.name ?? "—"}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {p.receiptNo} · {fmtDate(p.date)}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-display text-sm font-bold text-success">
-                            +{inr(p.amount)}
-                          </p>
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                            {p.mode}
-                          </p>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            </div>
+                        <MessageCircle className="h-4 w-4" /> WhatsApp
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-            {/* Batch revenue */}
-            <Suspense
-              fallback={
-                <Card>
-                  <CardContent className="p-6">
-                    <Skeleton className="h-64 w-full" />
-                  </CardContent>
-                </Card>
-              }
-            >
-              <DashboardBatchRevenueChart batchRevenue={batchRevenue} />
-            </Suspense>
+        <div className="grid gap-6 xl:grid-cols-3">
+          {/* Defaulters */}
+          <Card className="xl:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Top pending dues</CardTitle>
+                <p className="text-xs text-muted-foreground">AI-suggested follow-ups</p>
+              </div>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/fees">View all <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {defaulters.map((s) => (
+                <div key={s.id} className="flex items-center gap-3 rounded-lg border bg-card/40 p-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback className="bg-accent text-accent-foreground text-xs font-bold">
+                      {initials(s.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <Link to="/students/$id" params={{ id: s.id }} className="truncate font-medium hover:underline">
+                        {s.name}
+                      </Link>
+                      <span className="font-display font-bold text-destructive">{inr(s.due)}</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{s.course} · {s.rollNo}</span>
+                      <span>{s.pct}% paid</span>
+                    </div>
+                    <Progress value={s.pct} className="mt-1.5 h-1.5" />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Recent payments */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Recent payments</CardTitle>
+                <p className="text-xs text-muted-foreground">Latest 6 transactions</p>
+              </div>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/receipts">All <ArrowUpRight className="h-3.5 w-3.5" /></Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {recent.map((p) => {
+                const st = students.find((s) => s.id === p.studentId);
+                return (
+                  <Link
+                    key={p.id}
+                    to="/receipts/$id"
+                    params={{ id: p.id }}
+                    className="flex items-center justify-between rounded-lg p-2 hover:bg-accent/50"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{st?.name ?? "—"}</p>
+                      <p className="text-xs text-muted-foreground">{p.receiptNo} · {fmtDate(p.date)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-display text-sm font-bold text-success">+{inr(p.amount)}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{p.mode}</p>
+                    </div>
+                  </Link>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Batch revenue */}
+        <Suspense
+          fallback={
+            <Card>
+              <CardContent className="p-6">
+                <Skeleton className="h-64 w-full" />
+              </CardContent>
+            </Card>
+          }
+        >
+          <DashboardBatchRevenueChart batchRevenue={batchRevenue} />
+        </Suspense>
           </>
         )}
       </main>
@@ -857,12 +784,8 @@ function Kpi({
     >
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {label}
-          </p>
-          <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone]}`}>
-            {icon}
-          </span>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+          <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tones[tone]}`}>{icon}</span>
         </div>
         <p className="mt-3 font-display text-2xl font-bold leading-none">{value}</p>
         <p className="mt-2 text-xs text-muted-foreground">{delta}</p>
