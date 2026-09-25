@@ -22,9 +22,7 @@ import {
 import { AttendanceGrid } from "@/components/attendance/attendance-grid";
 import { NotifyAbsenteesDialog } from "@/components/attendance/notify-absentees-dialog";
 import { NotifyTab } from "@/components/attendance/notify-tab";
-import { BatchesOverview } from "@/components/attendance/reports/batches-overview";
-import { BatchDayList } from "@/components/attendance/reports/batch-day-list";
-import { DayNotifyList } from "@/components/attendance/reports/day-notify-list";
+import { AttendanceReportDownload } from "@/components/attendance/reports/report-download";
 
 import {
   listBatches,
@@ -37,7 +35,7 @@ import { useSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/roles";
 import { useSettings } from "@/lib/settings/store";
 import { todayLocalISO } from "@/lib/format";
-import type { AttendanceSession, Batch, Student } from "@/lib/data/types";
+import type { Batch, Student } from "@/lib/data/types";
 
 const pageQuery = {
   queryKey: ["attendance-page"] as const,
@@ -124,7 +122,11 @@ function AttendancePage() {
               {batch && <MarkAttendanceTab batch={batch} allStudents={data.students} />}
             </TabsContent>
             <TabsContent value="reports">
-              <AttendanceReportsTab batches={activeBatches} students={data.students} />
+              <AttendanceReportDownload
+                batches={activeBatches}
+                students={data.students}
+                selectedBatchId={batchId}
+              />
             </TabsContent>
             <TabsContent value="notify">
               <NotifyTab
@@ -402,44 +404,5 @@ function MarkAttendanceTab({ batch, allStudents }: { batch: Batch; allStudents: 
         attendanceLanguage={attendanceSettings.language}
       />
     </div>
-  );
-}
-
-function AttendanceReportsTab({ batches, students }: { batches: Batch[]; students: Student[] }) {
-  const { attendance: attendanceSettings } = useSettings();
-  const [view, setView] = useState<
-    | { level: "batches" }
-    | { level: "days"; batch: Batch }
-    | { level: "day"; batch: Batch; session: AttendanceSession }
-  >({ level: "batches" });
-
-  if (view.level === "days") {
-    return (
-      <BatchDayList
-        batch={view.batch}
-        onBack={() => setView({ level: "batches" })}
-        onSelectDay={(session) => setView({ level: "day", batch: view.batch, session })}
-      />
-    );
-  }
-
-  if (view.level === "day") {
-    return (
-      <DayNotifyList
-        batch={view.batch}
-        session={view.session}
-        students={students}
-        attendanceLanguage={attendanceSettings.language}
-        onBack={() => setView({ level: "days", batch: view.batch })}
-      />
-    );
-  }
-
-  return (
-    <BatchesOverview
-      batches={batches}
-      students={students}
-      onSelectBatch={(batch) => setView({ level: "days", batch })}
-    />
   );
 }

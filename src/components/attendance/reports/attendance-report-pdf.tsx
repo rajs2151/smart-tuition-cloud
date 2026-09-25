@@ -50,7 +50,7 @@ function paginate(report: AttendanceReport): Block[][] {
   };
 
   report.sections.forEach((s, section) => {
-    // A class with nobody absent still gets one line ("All present" etc.).
+    // A class with nobody absent still gets one "No one was absent." line.
     const rows = Math.max(s.absent.length, 1);
     if (used + CLASS_H + ROW_H > CONTENT_H) newPage();
     push({ kind: "class", section, continued: false });
@@ -120,7 +120,7 @@ function ClassHeading({
             fontSize: 12,
             fontWeight: 600,
             whiteSpace: "nowrap",
-            color: s.status !== "taken" ? C.muted : s.absent.length > 0 ? C.red : C.green,
+            color: s.absent.length > 0 ? C.red : C.green,
           }}
         >
           {sectionSummary(s)}
@@ -150,11 +150,7 @@ function AbsentRow({
     borderBottom: `1px solid ${C.border}`,
   } as const;
   if (!a) {
-    return (
-      <div style={{ ...base, color: C.muted }}>
-        {s.status === "taken" ? "No one was absent." : "No attendance for this day."}
-      </div>
-    );
+    return <div style={{ ...base, color: C.muted }}>No one was absent.</div>;
   }
   return (
     <div style={base}>
