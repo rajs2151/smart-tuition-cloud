@@ -282,11 +282,12 @@ export function AttendanceReportDownload({
 
   const busyIcon = <Loader2 className="h-4 w-4 animate-spin" />;
   const singleDay = from === to;
+  const oneBatch = batchFilter !== "all";
   const shownSections = preview?.sections.slice(0, PREVIEW_SECTIONS) ?? [];
   const hiddenSections = (preview?.sections.length ?? 0) - shownSections.length;
 
   return (
-    <Card>
+    <Card className="max-w-3xl">
       <CardContent className="space-y-5 p-4 sm:p-6">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -396,25 +397,30 @@ export function AttendanceReportDownload({
               <ul className="divide-y">
                 {shownSections.map((s, i) => (
                   <li key={`${s.sessionDate}-${i}`} className="px-4 py-3">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <p className="min-w-0 truncate text-sm font-semibold">
-                        {s.batchName}
-                        {!singleDay && (
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            {fmtDate(s.sessionDate)}
-                          </span>
-                        )}
-                      </p>
-                      <span
-                        className={`shrink-0 text-xs font-medium ${s.absent.length > 0 ? "text-destructive" : "text-success"}`}
-                      >
-                        {sectionSummary(s)}
-                      </span>
-                    </div>
+                    {!(oneBatch && singleDay) && (
+                      <div className="mb-2 flex items-baseline justify-between gap-3">
+                        <p className="min-w-0 truncate text-sm font-semibold">
+                          {oneBatch ? fmtDate(s.sessionDate) : s.batchName}
+                          {!oneBatch && !singleDay && (
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                              {fmtDate(s.sessionDate)}
+                            </span>
+                          )}
+                        </p>
+                        <span
+                          className={`shrink-0 text-xs font-medium ${s.absent.length > 0 ? "text-destructive" : "text-success"}`}
+                        >
+                          {sectionSummary(s)}
+                        </span>
+                      </div>
+                    )}
                     {s.absent.length > 0 ? (
-                      <ol className="mt-2 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                      <ol className="gap-x-8 text-sm sm:columns-2">
                         {s.absent.map((a, j) => (
-                          <li key={j} className="flex min-w-0 items-baseline gap-2">
+                          <li
+                            key={j}
+                            className="mb-1 flex min-w-0 break-inside-avoid items-baseline gap-2"
+                          >
                             <span className="w-6 shrink-0 text-right tabular-nums text-muted-foreground">
                               {j + 1}.
                             </span>
@@ -428,7 +434,7 @@ export function AttendanceReportDownload({
                         ))}
                       </ol>
                     ) : (
-                      <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
                         <UserCheck className="h-3.5 w-3.5" /> Everyone was present.
                       </p>
                     )}
