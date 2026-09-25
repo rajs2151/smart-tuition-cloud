@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { Plus } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,139 @@ import { invalidateAfterPayment, prependPayment } from "@/lib/query/invalidate";
 import { FEE_LIMITS, clampFee } from "@/lib/validation/input-rules";
 
 const STUDENTS_QUERY_KEY = studentsListQuery.queryKey;
+const MATCH_LIMIT = 8;
+
+function studentMatches(student: Student, query: string): boolean {
+  const name = student.name.toLowerCase();
+  const roll = student.rollNo.toLowerCase();
+  const phone = (student.phone ?? "").replace(/\D/g, "");
+  const digits = query.replace(/\D/g, "");
+  return (
+    name.includes(query) || roll.includes(query) || (digits.length >= 3 && phone.includes(digits))
+  );
+}
+
+/** Type-to-find student field. A native input (not a dropdown) so a phone
+ *  opens its keyboard. Matches stay inside the dialog: a second popup would
+ *  sit outside the dialog's focus trap and the keyboard would not appear. */
+function StudentSearch({
+  open,
+  students,
+  studentId,
+  onSelect,
+}: {
+  open: boolean;
+  students: Student[];
+  studentId: string;
+  onSelect: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState(false);
+  const selected = students.find((s) => s.id === studentId) ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setEditing(false);
+  }, [open]);
+
+  const shown = editing ? query : (selected?.name ?? "");
+  const needle = shown.trim().toLowerCase();
+  const matches = useMemo(() => {
+    if (!editing || needle.length === 0) return [];
+    return students
+      .filter((s) => studentMatches(s, needle))
+      .sort(
+        (a, b) =>
+          Number(b.name.toLowerCase().startsWith(needle)) -
+            Number(a.name.toLowerCase().startsWith(needle)) || a.name.localeCompare(b.name),
+      )
+      .slice(0, MATCH_LIMIT);
+  }, [students, editing, needle]);
+  const hidden = useMemo(() => {
+    if (!editing || needle.length === 0) return 0;
+    return students.filter((s) => studentMatches(s, needle)).length - matches.length;
+  }, [students, editing, needle, matches.length]);
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="payment-student">Student</Label>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          id="payment-student"
+          value={shown}
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="search"
+          enterKeyHint="search"
+          placeholder="Type a name, roll no or phone"
+          className="h-11 pl-9 text-base"
+          onFocus={() => {
+            if (editing) return;
+            setEditing(true);
+            setQuery(selected?.name ?? "");
+          }}
+          onChange={(e) => {
+            setEditing(true);
+            setQuery(e.target.value);
+            if (studentId) onSelect("");
+          }}
+        />
+      </div>
+      {selected && !editing && (
+        <p className="text-xs text-muted-foreground">
+          Selected{selected.rollNo ? ` · roll ${selected.rollNo}` : ""}
+          {selected.standard ? ` · ${selected.standard}` : ""}
+        </p>
+      )}
+      {editing && needle.length === 0 && (
+        <p className="text-xs text-muted-foreground">Type a few letters of the student's name.</p>
+      )}
+      {editing && needle.length > 0 && (
+        <ul
+          role="listbox"
+          aria-label="Matching students"
+          className="max-h-52 overflow-y-auto rounded-md border"
+        >
+          {matches.length === 0 ? (
+            <li className="px-3 py-3 text-sm text-muted-foreground">
+              No student matches “{shown.trim()}”.
+            </li>
+          ) : (
+            matches.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  role="option"
+                  className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-accent"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onSelect(s.id);
+                    setEditing(false);
+                    setQuery("");
+                  }}
+                >
+                  <span className="min-w-0 truncate font-medium">{s.name}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {s.rollNo}
+                    {s.standard ? ` · ${s.standard}` : ""}
+                  </span>
+                </button>
+              </li>
+            ))
+          )}
+          {hidden > 0 && (
+            <li className="px-3 py-2 text-center text-xs text-muted-foreground">
+              {hidden} more — type another letter to narrow the list
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * The one Receive Payment dialog used everywhere a payment can be
@@ -69,6 +202,7 @@ export function RecordPaymentDialog({
   const students = studentsProp ?? fetchedStudents ?? [];
 
   const [studentId, setStudentId] = useState(defaultStudentId ?? "");
+  const amountRef = useRef<HTMLInputElement>(null);
 
   const { data: fetchedPayments } = useQuery({
     queryKey: ["payments-for-student", studentId],
@@ -181,31 +315,36 @@ export function RecordPaymentDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-md"
+        onOpenAutoFocus={(e) => {
+          // Focus the field the teacher will type into, while the tap that
+          // opened the dialog is still recent, so the phone keyboard appears.
+          e.preventDefault();
+          const target = defaultStudentId
+            ? amountRef.current
+            : document.getElementById("payment-student");
+          target?.focus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Receive Payment</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Student</Label>
-            <Select value={studentId} onValueChange={setStudentId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select student" />
-              </SelectTrigger>
-              <SelectContent>
-                {students.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name} · {s.rollNo}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <StudentSearch
+            open={open}
+            students={students}
+            studentId={studentId}
+            onSelect={setStudentId}
+          />
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Amount (₹)</Label>
               <Input
+                ref={amountRef}
+                id="payment-amount"
                 type="number"
+                inputMode="decimal"
                 min={FEE_LIMITS.payment.min}
                 max={FEE_LIMITS.payment.max}
                 step={100}
