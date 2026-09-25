@@ -1,5 +1,51 @@
 # Known Issues
 
+## ⚠️ `supabase db push` Is Unusable Against Production
+
+Status:
+**Open — blocks every production schema change until reconciled.**
+
+Do NOT run `db push`, `db push --dry-run`, or `migration repair` against
+production under any circumstances until the history has been fully
+reconciled and reviewed.
+
+Notes:
+Production's migration history (`supabase_migrations.schema_migrations`)
+does not match the repo: only 1 of 20 migrations
+(`20260709055109_fix_authenticated_execute_grants`) is recorded under a
+matching version; 4 rows (`initial_schema`, `revoke_public_execute_on_helpers`,
+`wire_owner_membership_trigger_and_backfill`, `add_subscription_status`)
+have no matching repo file; 7 repo migrations are recorded under different
+timestamps; the rest are unrecorded despite being live (e.g.
+`is_owner_or_admin` from `20260714120001` exists in production). Function
+bodies in production have CRLF line endings, i.e. they were pasted into
+the SQL editor rather than pushed.
+
+`migration repair` in particular, followed by `db push`, will attempt to
+replay unrecorded migrations from `initial_schema` and fail partway through
+(or worse, partially succeed). Reproduced on a local Supabase stack loaded
+with production's 12 history rows — see PR #30's description:
+
+- `db push --dry-run` (with or without `--include-all`) stops with
+  `Remote migration versions not found in local migrations directory`.
+- After the CLI's suggested `migration repair --status reverted …`,
+  `db push` would run all 19 unrecorded files starting with
+  `20260703064918` (initial schema), which fails on
+  `relation "institutes" already exists`.
+
+Until reconciliation is done, all production schema changes must be applied
+by hand via the SQL editor, one file at a time, with the version manually
+verified against `pg_proc` / `information_schema` before and after:
+
+1. Before: record the current state of every object the file touches, e.g.
+   `select proname, md5(pg_get_functiondef(oid)), proacl from pg_proc where …`
+   and `information_schema.role_table_grants` / `routine_privileges`.
+2. Paste and run exactly one migration file.
+3. After: re-run the same queries and confirm the change (and nothing else)
+   landed before moving to the next file.
+
+---
+
 ## Process Note: "No Textual Conflict" Isn't the Same as "Coherent Merge"
 
 Status:
@@ -262,20 +308,32 @@ pass, not a quick fix.
 ## Pending Migrations Not Yet Applied to Production
 
 Status:
-**Action required on production** — apply with `supabase db push` (see [`docs/TWA-SETUP.md`](docs/TWA-SETUP.md)).
+**Apply by hand via the SQL editor only** — `supabase db push` is unusable
+against production (see the first section of this file).
 
-Code + migration files are ready on this branch:
+**Do NOT apply `20260820120000_is_member_requires_active_access.sql` in its
+original form.** As first committed it revoked `EXECUTE` on `is_member` /
+`is_owner` from `authenticated` (lines 39-40). Every RLS policy calls those
+functions as the signed-in user, so every tenant-scoped query would fail
+with `permission denied for function is_member` — the same outage
+`20260709055109_fix_authenticated_execute_grants.sql` fixed. Reproduced on a
+local Supabase stack. PR #30 amends it in place (it is not recorded in
+production's history) and adds follow-ups; wait for that PR to merge.
+
+Migration files still to apply, one at a time, in this order:
 
 - `20260814000000_message_templates_and_comm_logs.sql`
 - `20260814230000_follow_up_threshold.sql`
-- `20260820120000_is_member_requires_active_access.sql` (disabled members cannot pass RLS)
+- `20260820120000_is_member_requires_active_access.sql` (disabled members cannot pass RLS) — **blocked: only the version amended by PR #30**
 
 Notes:
-All migrations through `20260731000000_expenses_system.sql` were previously
-confirmed applied. Messaging / follow-up / `is_member` tighten still need a
-live `db push` (or SQL Editor apply in filename order). After push, verify
+Production's function text shows the `20260820120000` bodies are already
+live but its REVOKEs are not (`authenticated` still has EXECUTE). Which of
+the other files are live is not recorded anywhere reliable — check each
+object with `pg_proc` / `information_schema` before applying, and verify
 `information_schema.role_table_grants` for `authenticated` vs `anon` /
-`PUBLIC`. This cannot be completed from CI without production credentials.
+`PUBLIC` after. This cannot be completed from CI without production
+credentials.
 
 ---
 
@@ -354,7 +412,8 @@ the full writeup.
 
 Status:
 Fixed in code (2026-08-20) — migration `20260814000000_message_templates_and_comm_logs.sql`
-must still be applied to production (`supabase db push`). Until then the UI
+must still be applied to production (by hand via the SQL editor — `db push`
+is unusable, see the first section). Until then the UI
 loads built-in templates **offline** (WhatsApp works; edits won’t persist)
 and shows a clear banner instead of a hard error. Verify grants via
 `information_schema` after apply, not from the SQL file alone.

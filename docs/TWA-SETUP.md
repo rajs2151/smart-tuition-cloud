@@ -23,11 +23,20 @@ File: `public/.well-known/assetlinks.json` (must be served at
 
 ## 3. Pending Supabase migrations (blocker until applied)
 
-From the project root (with Supabase CLI logged in and linked):
+> ⚠️ **`supabase db push` is UNUSABLE against production right now.**
+> Production's migration history does not match the repo. Do NOT run
+> `db push`, `db push --dry-run`, or `migration repair` against production
+> under any circumstances until the history has been fully reconciled and
+> reviewed. See [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) →
+> "`supabase db push` Is Unusable Against Production".
+>
+> Also do NOT apply `20260820120000_is_member_requires_active_access.sql`
+> until PR #30 (the `is_member` / `is_owner` grant fix) has merged.
 
-```bash
-supabase db push
-```
+Apply each file by hand in the Supabase SQL editor, one file at a time, in
+filename order. Before and after each file, check the objects it touches
+with `pg_proc` / `information_schema` and confirm only the expected change
+landed.
 
 Required migrations that may still be pending on production:
 
@@ -35,7 +44,7 @@ Required migrations that may still be pending on production:
 - `20260814230000_follow_up_threshold.sql`
 - `20260820120000_is_member_requires_active_access.sql` (disabled-member RLS fix)
 
-After push, verify grants:
+After each file, verify grants:
 
 ```sql
 SELECT grantee, privilege_type

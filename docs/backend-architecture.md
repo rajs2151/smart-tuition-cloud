@@ -546,10 +546,13 @@ GitHub access does **not** give you:
 3. **Local development**: clone the repo, copy `.env`'s Supabase values (or
    pull fresh ones from the Supabase dashboard's **Settings → API** page),
    run `npm install && npm run dev`.
-4. **Applying schema changes locally**: install the Supabase CLI, run
-   `supabase link --project-ref xrkfbsupszhsjevcmntc`, then
-   `supabase db push` to apply any new files added to
-   `supabase/migrations/`.
+4. **Applying schema changes to production**: do NOT use `supabase db push`,
+   `db push --dry-run`, or `migration repair` against
+   `xrkfbsupszhsjevcmntc` — its migration history does not match the repo
+   (see [`KNOWN_ISSUES.md`](../KNOWN_ISSUES.md) → "`supabase db push` Is
+   Unusable Against Production"). Apply each new file in
+   `supabase/migrations/` by hand in the SQL editor, one at a time,
+   verifying `pg_proc` / `information_schema` before and after.
 5. **Deployment access** (Vercel): be added as a member of the Vercel
    team/project that has this repo connected, separately from both GitHub
    and Supabase access.
