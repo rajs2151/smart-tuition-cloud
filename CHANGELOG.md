@@ -5,6 +5,21 @@ first). Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## 2026-09-26
+
+### Added
+- Student page, Payment timeline: an **Edit** button on each payment (owner).
+  Amount, date, mode and note can be corrected without deleting the student.
+  Receipt number and student stay the same. Saving goes through the existing
+  `updatePayment`, which recalculates collected and due. Same amount limits
+  as Record payment (₹1 to ₹5,00,000, no future date).
+
+### Changed
+- `docs/HANDOVER.md` now opens with a "Start here (26 September 2026)" section
+  so the next change reads the current rules first: no `db push` against
+  production, what PRs #31 and #34 shipped, and that the July/August task
+  list is not the current queue.
+
 ## 2026-08-03 (docs reconciliation)
 
 ### Fixed
