@@ -11,6 +11,7 @@ import {
   MapPin,
   MessageCircle,
   Phone,
+  Pencil,
   Plus,
   Receipt as ReceiptIcon,
 } from "lucide-react";
@@ -34,6 +35,9 @@ import { useSettings } from "@/lib/settings/store";
 import { useMessaging, logComm } from "@/lib/messaging/store";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { RecordPaymentDialog } from "@/components/record-payment-dialog";
+import { EditPaymentDialog } from "@/components/payment-row-menu";
+import { useSession } from "@/lib/auth/session";
+import type { Payment } from "@/lib/data/types";
 
 export const Route = createFileRoute("/students/$id")({
   loader: async ({ params, context }) => {
@@ -91,6 +95,9 @@ function StudentDetail() {
   const due = Math.max(0, billed - collected);
   const pct = Math.round((collected / Math.max(1, billed)) * 100);
   const { institute } = useSettings();
+  const { role } = useSession();
+  const canEditPayment = role === "owner";
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const admissionRef = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
 
@@ -303,11 +310,22 @@ function StudentDetail() {
                             </p>
                             <p className="text-xs text-muted-foreground">{fmtDate(p.date)} · {p.receiptNo}</p>
                           </div>
-                          <Button variant="outline" size="sm" asChild>
-                            <Link to="/receipts/$id" params={{ id: p.id }}>
-                              <ReceiptIcon className="h-3.5 w-3.5" /> View receipt
-                            </Link>
-                          </Button>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {canEditPayment && !p.voided && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setEditingPayment(p)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" /> Edit
+                              </Button>
+                            )}
+                            <Button variant="outline" size="sm" asChild>
+                              <Link to="/receipts/$id" params={{ id: p.id }}>
+                                <ReceiptIcon className="h-3.5 w-3.5" /> View receipt
+                              </Link>
+                            </Button>
+                          </div>
                         </div>
                       </li>
                     ))}
@@ -317,6 +335,15 @@ function StudentDetail() {
             </Card>
           </div>
         </div>
+        {editingPayment && (
+          <EditPaymentDialog
+            payment={editingPayment}
+            open
+            onOpenChange={(open) => {
+              if (!open) setEditingPayment(null);
+            }}
+          />
+        )}
       </main>
     </>
   );

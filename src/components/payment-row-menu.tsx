@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { updatePayment, voidPayment, listPaymentsByStudent } from "@/lib/data/adapter";
+import { FEE_LIMITS } from "@/lib/validation/input-rules";
 import { useSession } from "@/lib/auth/session";
 import { buildContext, openWhatsApp, pickMobile, renderMessage } from "@/lib/messaging/whatsapp";
 import { useMessaging, logComm, markLogPaid } from "@/lib/messaging/store";
@@ -113,7 +114,9 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {isOwner && <EditPaymentDialog payment={payment} open={editOpen} onOpenChange={setEditOpen} />}
+      {isOwner && (
+        <EditPaymentDialog payment={payment} open={editOpen} onOpenChange={setEditOpen} />
+      )}
 
       <AlertDialog open={voidOpen} onOpenChange={setVoidOpen}>
         <AlertDialogContent>
@@ -133,24 +136,47 @@ export function PaymentRowMenu({ payment, student }: { payment: Payment; student
   );
 }
 
-function EditPaymentDialog({ payment, open, onOpenChange }: {
+export function EditPaymentDialog({ payment, open, onOpenChange }: {
   payment: Payment; open: boolean; onOpenChange: (open: boolean) => void;
 }) {
   const qc = useQueryClient();
   const [amount, setAmount] = useState(String(payment.amount));
-  const [date, setDate] = useState(payment.date);
+  const [date, setDate] = useState(payment.date.slice(0, 10));
   const [mode, setMode] = useState<Payment["mode"]>(payment.mode);
   const [note, setNote] = useState(payment.note ?? "");
+  const [saving, setSaving] = useState(false);
+
+  // The dialog stays mounted on the Fees page, so opening a second payment
+  // must not keep the first payment's amount in the fields.
+  useEffect(() => {
+    if (!open) return;
+    setAmount(String(payment.amount));
+    setDate(payment.date.slice(0, 10));
+    setMode(payment.mode);
+    setNote(payment.note ?? "");
+  }, [open, payment.id, payment.amount, payment.date, payment.mode, payment.note]);
 
   const submit = async () => {
-    if (!amount || Number(amount) <= 0) return toast.error("Enter a valid amount");
+    const amountNum = Number(amount);
+    if (!Number.isFinite(amountNum) || amountNum < FEE_LIMITS.payment.min) {
+      return toast.error("Enter a realistic payment amount (at least ₹1)");
+    }
+    if (amountNum > FEE_LIMITS.payment.max) {
+      return toast.error("Payment amount looks too high (max ₹5,00,000). Check and try again.");
+    }
+    if (date > new Date().toISOString().slice(0, 10)) {
+      return toast.error("Payment date can't be in the future.");
+    }
+    setSaving(true);
     try {
-      await updatePayment(payment.id, { amount: Number(amount), date, mode, note });
+      await updatePayment(payment.id, { amount: amountNum, date, mode, note });
       toast.success("Payment updated");
       await invalidateAfterPayment(qc);
       onOpenChange(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update payment");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -164,11 +190,22 @@ function EditPaymentDialog({ payment, open, onOpenChange }: {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Amount (₹)</Label>
-              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <Input
+                type="number"
+                min={FEE_LIMITS.payment.min}
+                max={FEE_LIMITS.payment.max}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Payment date</Label>
-              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input
+                type="date"
+                max={new Date().toISOString().slice(0, 10)}
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -191,8 +228,12 @@ function EditPaymentDialog({ payment, open, onOpenChange }: {
           </p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={submit}>Save changes</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? "Saving…" : "Save changes"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

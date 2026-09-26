@@ -1,6 +1,48 @@
 # Project Handover
 
-_Last updated: August 3, 2026_
+_Last updated: 26 September 2026_
+
+## Start here (26 September 2026)
+
+Read this before the older sessions below. Those sessions are history, and
+several of their "do this next" items are already done or no longer safe.
+
+**How production schema changes are applied.** Do not run `supabase db push`,
+`db push --dry-run`, or `migration repair` against production. The migration
+history table does not match this repo. Apply one SQL file at a time in the
+Supabase SQL editor, and check `pg_proc` / `information_schema` before and
+after. Details are the first section of `KNOWN_ISSUES.md`.
+
+**What shipped recently (all on `main`):**
+- Attendance reports show only classes where attendance was taken, with the
+  absent count and names (no "of 42"). Holidays and cancelled lectures are
+  left out. The Reports tab is one card: the batch follows the header, and
+  Copy text / Excel / PDF / Share are on that card. PR #31.
+- Collection efficiency opens a per-batch list (students, % collected, %
+  still remaining). Students by standard shows a total. Settings → Team
+  invites by email up to 5 users; it had crashed because
+  `useSyncExternalStore` was not imported. Notify walks absentees with
+  Send & next. WhatsApp cannot open every parent chat from one tap. PR #34.
+- A payment on the student page can be edited (amount, date, mode, note)
+  without deleting the student. Receipt number and student stay fixed.
+  Saving uses the existing `updatePayment`, which recalculates collected
+  and due. Owners only, same as the Fees page menu. Void stays on Fees.
+
+**Do not start** the earlier attendance Phase 2 redesign unless it is asked
+for again. It was approved, then set aside.
+
+**Speed.** Lists (students, payments, batches) are already one query each
+and shared across Dashboard, Fees and the header search. At a few hundred
+students that is not the slow part. No pagination change was made.
+
+**Still open, do not treat the July/August task list as current:**
+production history reconciliation before any `db push`; leaked-password
+protection is a dashboard setting, not code.
+
+**Known, not changed.** A full reload of `/students/<id>` can show
+"Student not found" because that first render runs on the server, which
+does not have the browser login. Opening the student from the Students
+list works. Left alone so sign-in behaviour stays as it is.
 
 ---
 
